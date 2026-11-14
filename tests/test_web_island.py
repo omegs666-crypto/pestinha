@@ -160,7 +160,7 @@ def test_factory_escolhe_webengine_ou_nativa(tmp_path, monkeypatch):
     assert web_island.criar_ilha(app) == ("nativa", app)
 
 
-def test_pagina_carrega_com_tres_quadros_e_ponte(tmp_path):
+def test_pagina_carrega_com_dois_quadros_e_ponte(tmp_path):
     _qt()
     if not web_island.WEB_OK:
         pytest.skip("PySide6-WebEngine não instalado")
@@ -180,6 +180,6 @@ def test_pagina_carrega_com_tres_quadros_e_ponte(tmp_path):
     ilha.view.page().runJavaScript("document.querySelectorAll('iframe').length + ':' + typeof QWebChannel", coletar)
     QTimer.singleShot(5_000, laco2.quit)
     laco2.exec()
-    assert resultado.get("v") == "3:function"
+    assert resultado.get("v") == "2:function"
     ilha.shutdown()
     ilha.close()

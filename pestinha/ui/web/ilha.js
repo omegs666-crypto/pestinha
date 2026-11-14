@@ -107,23 +107,70 @@
     if (valor === aberta) return;
     aberta = valor;
     nucleo.classList.toggle('aberto', valor);
+    if (!valor) cancelarContagem();
     moverPara(tamanhoAtual());
     if (valor) setTimeout(redimensionarCanvases, 60);
   }
 
-  // hover abre com um pequeno atraso; sair recolhe, a não ser que esteja fixada ou digitando
-  nucleo.addEventListener('mouseenter', () => {
+  // Recolher após sair: a barra fina encolhe mostrando o tempo que falta (guia: primeiro commit).
+  // Entrar de novo cancela; Fixar mantém aberta; o tempo é ajustado em Controles.
+  let recolherS = Number(localStorage.getItem('nucleo.recolherS')) || 3;
+  const contagem = $('#contagem');
+  let recolherEm = 0, contagemFrame = 0;
+  function podeRecolher() {
+    return aberta && !fixada && !respondendo && document.activeElement !== $('#entrada')
+      && $('#modelo-lista').hidden;
+  }
+  function agendarRecolher() {
+    if (!podeRecolher()) return;
     clearTimeout(timerFechar);
+    recolherEm = performance.now() + recolherS * 1000;
+    contagem.hidden = false;
+    timerFechar = setTimeout(() => abrir(false), recolherS * 1000);
+    desenharContagem();
+  }
+  function desenharContagem() {
+    if (!recolherEm) return;
+    const falta = lim((recolherEm - performance.now()) / (recolherS * 1000), 0, 1);
+    contagem.style.transform = `scaleX(${falta.toFixed(3)})`;
+    contagemFrame = requestAnimationFrame(desenharContagem);
+  }
+  function cancelarContagem() {
+    clearTimeout(timerFechar);
+    cancelAnimationFrame(contagemFrame);
+    recolherEm = 0;
+    contagem.hidden = true;
+  }
+
+  // hover abre com um pequeno atraso; sair começa a contagem para recolher
+  nucleo.addEventListener('mouseenter', () => {
+    cancelarContagem();
     if (!aberta) timerAbrir = setTimeout(() => abrir(true), 260);
   });
   nucleo.addEventListener('mouseleave', () => {
     clearTimeout(timerAbrir);
-    if (!aberta || fixada || document.activeElement === $('#entrada') || respondendo) return;
-    timerFechar = setTimeout(() => abrir(false), 750);
+    agendarRecolher();
   });
   $('#orbe').addEventListener('click', () => { orbe.explodir(); abrir(!aberta); });
-  $('#fixar').addEventListener('click', () => { fixada = !fixada; $('#fixar').classList.toggle('ligado', fixada); });
+  $('#balao').addEventListener('click', () => abrir(true));
+  function fixarAberta(valor) {
+    fixada = valor;
+    $('#fixar').classList.toggle('ligado', fixada);
+    $('#ctl-fixar').classList.toggle('ligada', fixada);
+    if (fixada) cancelarContagem();
+    else if (aberta && !nucleo.matches(':hover')) agendarRecolher();
+  }
+  $('#fixar').addEventListener('click', () => fixarAberta(!fixada));
+  $('#ctl-fixar').addEventListener('click', () => fixarAberta(!fixada));
   $('#recolher').addEventListener('click', () => { fixada = false; $('#fixar').classList.remove('ligado'); abrir(false); });
+  const recolherSlider = $('#ctl-recolher');
+  recolherSlider.value = recolherS;
+  $('#ctl-recolher-v').textContent = recolherS + ' s';
+  recolherSlider.addEventListener('input', () => {
+    recolherS = Number(recolherSlider.value);
+    localStorage.setItem('nucleo.recolherS', String(recolherS));
+    $('#ctl-recolher-v').textContent = recolherS + ' s';
+  });
 
   /* ======================= relógio ======================= */
   function relogio() {
@@ -330,7 +377,35 @@
 
   const dock = $('#dock');
   $$('.dock [data-vista]').forEach(b => b.addEventListener('click', () => mostrarVista(b.dataset.vista)));
-  $$('.dock [data-painel]').forEach(b => b.addEventListener('click', () => { if (ponte) ponte.painel(b.dataset.painel); }));
+  $$('[data-painel]').forEach(b => b.addEventListener('click', () => { if (ponte) ponte.painel(b.dataset.painel); }));
+
+  /* ======================= controles (aba Controles) ======================= */
+  let narradorLigado = true;
+  $$('.chave[data-acao]').forEach(b => b.addEventListener('click', () => {
+    const nome = b.dataset.acao;
+    if (nome === 'narrador') {
+      narradorLigado = !narradorLigado;
+      $('#narrador-liga').classList.toggle('ligada', narradorLigado);
+      $('#narrador-liga').textContent = narradorLigado ? 'Narrador ligado' : 'Narrador mudo';
+      if (ponte) ponte.ligar_narrador(narradorLigado);
+      atualizarControles();
+    } else if (ponte) {
+      ponte.acao(nome, !(b.getAttribute('aria-pressed') === 'true'));
+    }
+  }));
+  const BARRAS_PET = [['energia', 'ctl-energia', 'ctl-energia-b'], ['estimulacao', 'ctl-estimulo', 'ctl-estimulo-b'],
+    ['insatisfacao', 'ctl-insatisfacao', 'ctl-insatisfacao-b']];
+  function atualizarControles() {
+    $('#ctl-emocao').textContent = (estado.emocao || '—').toLowerCase();
+    BARRAS_PET.forEach(([chave, valor, barra]) => {
+      const pct = estado[chave] ?? 0;
+      $('#' + valor).textContent = pct + '%';
+      $('#' + barra).style.transform = `scaleX(${lim(pct / 100, 0, 1).toFixed(3)})`;
+    });
+    const marcado = { pausa: !!estado.pausado, voz: !!estado.voz, travessuras: !!estado.travessuras,
+      avion: !!estado.offline, narrador: narradorLigado };
+    $$('.chave[data-acao]').forEach(b => b.setAttribute('aria-pressed', String(!!marcado[b.dataset.acao])));
+  }
   // efeito lupa: os ícones crescem conforme o cursor se aproxima
   dock.addEventListener('mousemove', e => {
     $$('button', dock).forEach(b => {
@@ -403,6 +478,7 @@
     grafico.empurrar(estado);
     enviarMetricas();
     if (antes.offline !== estado.offline && estado.offline) falar('Modo avião: o chat local ficou desligado.', 'sistema', 'calmo');
+    atualizarControles();
   }
 
   /* ======================= gráfico em tempo real ======================= */
@@ -444,11 +520,14 @@
   function alternarAudio() { if (ponte) ponte.audio(!audioAtivo); }
   $('#som-play').addEventListener('click', alternarAudio);
   $('#estudio-audio').addEventListener('click', alternarAudio);
-  $('#estudio-limpar').addEventListener('click', () => { marcas = []; });
+  $('#estudio-limpar').addEventListener('click', limparMomentos);
+  $('#gv-marcar').addEventListener('click', () => $('#estudio').dispatchEvent(new MouseEvent('click')));
 
   function atualizarBotoesSom() {
     $('#som-play').innerHTML = audioAtivo ? ICONE_PAUSA : ICONE_PLAY;
-    $('#estudio-audio').textContent = audioAtivo ? 'Parar' : 'Ouvir';
+    $('#estudio-audio').classList.toggle('gravando', audioAtivo);
+    $('#estudio-audio').setAttribute('aria-pressed', String(audioAtivo));
+    $('#estudio-audio').setAttribute('aria-label', audioAtivo ? 'Parar a escuta' : 'Ouvir o áudio do sistema');
     $('#som-titulo').textContent = audioAtivo ? (rms > .004 ? 'Tocando agora' : 'Silêncio') : 'Silêncio';
     $('#som-sub').textContent = audioAtivo ? 'Loopback do sistema · 48 kHz' : 'Toque para ouvir o que sai do PC';
   }
@@ -464,7 +543,7 @@
     const silencio = !!d.silencio;
     $('#som-titulo').textContent = silencio ? 'Silêncio' : 'Tocando agora';
     $('#estudio-estado').textContent = silencio ? 'Ouvindo · sem som agora' : 'Ouvindo o áudio do sistema';
-    $$('iframe[data-quadro="centro"]').forEach(f => enviar(f, { tipo: 'niveis', bandas, ativo: audioAtivo, taxa: 48000 }));
+    $$('i', gvMedidor).forEach((l, i) => { const acesos = Math.round(lim(pico * 1.4, 0, 1) * 16); l.className = i < acesos ? (i >= 13 ? 'on pico' : i >= 10 ? 'on quente' : 'on') : ''; });
   }
 
   function aoEstadoAudio(texto) {
@@ -526,6 +605,7 @@
     function marcar() {
       marcas.push({ idade: 0 });
       if (marcas.length > 12) marcas.shift();
+      registrarMomento();
       orbe.explodir();
     }
     function desenhar(dt) {
@@ -584,6 +664,32 @@
     }
     return { desenhar };
   })();
+
+  /* ======================= momentos e cronômetro (aba Som) ======================= */
+  const gvMedidor = $('#gv-medidor');
+  for (let i = 0; i < 16; i++) gvMedidor.appendChild(document.createElement('i'));
+  const listaMomentos = $('#gv-lista');
+  let numMomentos = 0, tempoAudio = 0;
+  const fmtTempo = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  function registrarMomento() {
+    numMomentos++;
+    listaMomentos.querySelector('.gv-vazio')?.remove();
+    const li = document.createElement('li');
+    li.textContent = `${fmtTempo(tempoAudio)} · pico ${Math.round(lim(pico, 0, 1) * 100)}%`;
+    listaMomentos.prepend(li);
+    while (listaMomentos.children.length > 12) listaMomentos.lastChild.remove();
+    $('#gv-contagem').textContent = numMomentos;
+  }
+  function limparMomentos() {
+    marcas = []; numMomentos = 0;
+    listaMomentos.replaceChildren(Object.assign(document.createElement('li'), { className: 'gv-vazio', textContent: 'Nenhum momento marcado ainda' }));
+    $('#gv-contagem').textContent = 0;
+  }
+  setInterval(() => {
+    if (audioAtivo) tempoAudio += .1;
+    $('#gv-tempo').textContent = fmtTempo(tempoAudio);
+    $('#gv-decimo').textContent = '.' + (Math.floor(tempoAudio * 10) % 10);
+  }, 100);
 
   /* ======================= foco (pomodoro) ======================= */
   let focoTotal = 25 * 60, focoResta = focoTotal, focoRodando = false, focoTimer = null;
@@ -699,6 +805,47 @@
     localStorage.setItem('pestinha.modelo', e.target.value);
     $('#aviso-nuvem').hidden = !ehNuvem(e.target.value);
     if (ponte) ponte.definir_modelo(e.target.value);
+    renderizarEscolha();
+  });
+
+  // Lista de modelos própria: fica dentro da ilha, então passar o mouse por ela não fecha nada.
+  // O <select> oculto continua sendo a fonte da verdade (o resto do código lê dele).
+  const escolhaBotao = $('#modelo-atual'), escolhaLista = $('#modelo-lista');
+  function renderizarEscolha() {
+    const sel = $('#modelo');
+    const nomes = [...sel.options].map(o => ({ valor: o.value, texto: o.textContent }));
+    escolhaLista.replaceChildren(...nomes.map(m => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.dataset.valor = m.valor;
+      li.textContent = m.texto;
+      li.setAttribute('aria-selected', String(m.valor === sel.value));
+      li.classList.toggle('atual', m.valor === sel.value);
+      li.classList.toggle('nuvem', ehNuvem(m.valor));
+      return li;
+    }));
+    escolhaBotao.textContent = sel.value ? (ehNuvem(sel.value) ? sel.value + ' (nuvem)' : sel.value) : 'Sem modelo';
+    escolhaBotao.classList.toggle('nuvem', ehNuvem(sel.value));
+    escolhaBotao.disabled = !nomes.length;
+    if (!nomes.length) escolhaLista.hidden = true;
+  }
+  escolhaBotao.addEventListener('click', e => {
+    e.stopPropagation();
+    const abre = escolhaLista.hidden;
+    escolhaLista.hidden = !abre;
+    escolhaBotao.setAttribute('aria-expanded', String(abre));
+  });
+  escolhaLista.addEventListener('click', e => {
+    const li = e.target.closest('li');
+    if (!li) return;
+    const sel = $('#modelo');
+    sel.value = li.dataset.valor;
+    sel.dispatchEvent(new Event('change'));
+    escolhaLista.hidden = true;
+    escolhaBotao.setAttribute('aria-expanded', 'false');
+  });
+  document.addEventListener('click', e => {
+    if (!$('#escolha').contains(e.target)) { escolhaLista.hidden = true; escolhaBotao.setAttribute('aria-expanded', 'false'); }
   });
 
   function aoModelos(lista) {
@@ -711,6 +858,7 @@
     sel.disabled = !modelos.length;
     $('#aviso-nuvem').hidden = !ehNuvem(sel.value);
     if (ponte && sel.value) ponte.definir_modelo(sel.value);
+    renderizarEscolha();
     if (modelos.length) $('#erro').hidden = true;
     else mostrarErro('Nenhum modelo instalado encontrado no Ollama local.', true);
   }
@@ -890,5 +1038,5 @@
   }
 
   mostrarFluxo('reacoes');
-  window.nucleoDebug = { abrir, mostrarVista, falar, niveis: aoReceberNiveis, audio: aoEstadoAudio };   // testes e capturas
+  window.nucleoDebug = { abrir, mostrarVista, falar, niveis: aoReceberNiveis, audio: aoEstadoAudio, modelos: aoModelos, agendar: agendarRecolher, controles: atualizarControles, marcar: () => $("#estudio").dispatchEvent(new MouseEvent("click")) };   // testes e capturas
 })();

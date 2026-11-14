@@ -17,7 +17,7 @@
       <span class="data" id="data">—</span>
       <div class="meio">
         <canvas id="orbe" aria-label="Núcleo: estado do sistema"></canvas>
-        <p class="balao" id="balao" aria-live="polite"><span class="origem" id="balao-origem"></span><span id="balao-txt"></span></p>
+        <p class="balao" id="balao" aria-live="polite" title="Clique para abrir"><span class="origem" id="balao-origem"></span><span id="balao-txt"></span></p>
       </div>
       <span class="hora" id="hora">--:--</span>
     </header>
@@ -82,22 +82,64 @@
         </div>
       </section>
 
-      <!-- Estúdio de som: espectro radial, onda que flui e marcas -->
+      <!-- Som do sistema: gravador no estilo da Grabadora (cronômetro, onda, LEDs, marcas em lista) -->
       <section class="vista" data-vista="som">
-        <div class="estudio">
-          <canvas id="estudio" aria-label="Visualizador do áudio do sistema"></canvas>
-          <div class="hud">
-            <span class="estado" id="estudio-estado">Captura parada</span>
-            <button type="button" class="pilula" id="estudio-limpar">Limpar marcas</button>
-            <button type="button" class="pilula ligada" id="estudio-audio">Ouvir</button>
+        <div class="gravador">
+          <div class="gv-principal">
+            <header class="gv-cab">
+              <span class="gv-estado" id="gv-estado"><i class="gv-punto"></i><b id="estudio-estado">Captura parada</b></span>
+              <span class="gv-medidor" id="gv-medidor" aria-hidden="true"></span>
+            </header>
+            <div class="gv-tempo" aria-hidden="true"><span id="gv-tempo">00:00</span><small id="gv-decimo">.0</small></div>
+            <div class="gv-onda"><canvas id="estudio" aria-label="Visualizador do áudio do sistema"></canvas></div>
+            <div class="gv-mandos">
+              <button type="button" class="gv-btn" id="gv-marcar">Marcar <kbd>M</kbd></button>
+              <button type="button" class="gv-rec" id="estudio-audio" aria-label="Ouvir o áudio do sistema"><i></i><i></i><i></i><span class="gv-corpo"></span></button>
+              <button type="button" class="gv-btn" id="estudio-limpar">Limpar</button>
+            </div>
+            <p class="gv-ajuda">Clique na onda ou aperte M para marcar um momento · o áudio é só analisado, nunca gravado</p>
           </div>
-          <p class="dica">Clique na onda (ou tecla M) para marcar um momento · passe o mouse para mexer no campo</p>
+          <aside class="gv-lista" aria-label="Momentos marcados">
+            <h2>Momentos <small id="gv-contagem">0</small></h2>
+            <ul id="gv-lista"><li class="gv-vazio">Nenhum momento marcado ainda</li></ul>
+          </aside>
         </div>
       </section>
 
+      <!-- Controles: o que o pet está fazendo e os interruptores do programa -->
       <section class="vista" data-vista="painel">
-        <iframe data-src="moxen/centro/index.html" data-quadro="centro" title="Controles"></iframe>
+        <div class="controles">
+          <article class="ctl ctl-pet">
+            <span class="rotulo">Pet agora</span>
+            <div class="ctl-emocao" id="ctl-emocao">—</div>
+            <div class="barras">
+              <label>Energia <b id="ctl-energia">0%</b><i><u id="ctl-energia-b"></u></i></label>
+              <label>Estímulo <b id="ctl-estimulo">0%</b><i><u id="ctl-estimulo-b"></u></i></label>
+              <label>Insatisfação <b id="ctl-insatisfacao">0%</b><i><u id="ctl-insatisfacao-b"></u></i></label>
+            </div>
+          </article>
+          <article class="ctl ctl-chaves">
+            <span class="rotulo">Interruptores</span>
+            <button type="button" class="chave" data-acao="pausa" aria-pressed="false"><span>Pausar o pet</span><i></i></button>
+            <button type="button" class="chave" data-acao="voz" aria-pressed="false"><span>Falar em voz alta</span><i></i></button>
+            <button type="button" class="chave" data-acao="travessuras" aria-pressed="false"><span>Travessuras</span><i></i></button>
+            <button type="button" class="chave" data-acao="avion" aria-pressed="false"><span>Modo avião (sem Ollama)</span><i></i></button>
+            <button type="button" class="chave" data-acao="narrador" aria-pressed="true"><span>Narrador comenta</span><i></i></button>
+          </article>
+          <article class="ctl ctl-janela">
+            <span class="rotulo">Janela</span>
+            <label class="faixa">Recolher após sair <b id="ctl-recolher-v">3 s</b>
+              <input type="range" id="ctl-recolher" min="1" max="10" step="1" value="3"></label>
+            <button type="button" class="pilula" id="ctl-fixar">Fixar aberta</button>
+            <div class="ctl-paineis">
+              <button type="button" class="pilula" data-painel="neural">Monitor neural</button>
+              <button type="button" class="pilula" data-painel="mlp">Laboratório MLP</button>
+              <button type="button" class="pilula" data-painel="greve">Painel de protesto</button>
+            </div>
+          </article>
+        </div>
       </section>
+
       <section class="vista" data-vista="grade">
         <iframe data-src="moxen/parrilla/index.html?tema=oscuro" data-quadro="parrilla" title="Grade de widgets"></iframe>
       </section>
@@ -117,7 +159,11 @@
       <section class="vista" data-vista="chat">
         <div class="chat">
           <div class="topo">
-            <select id="modelo" aria-label="Modelo local"></select>
+            <select id="modelo" aria-label="Modelo local" hidden></select>
+            <div class="escolha" id="escolha">
+              <button type="button" class="pilula escolha-botao" id="modelo-atual" aria-haspopup="listbox" aria-expanded="false">Escolher modelo</button>
+              <ul class="escolha-lista" id="modelo-lista" role="listbox" hidden></ul>
+            </div>
             <button type="button" class="pilula" id="atualizar">Atualizar</button>
             <label class="marca"><input type="checkbox" id="ler"> Ler respostas</label>
             <button type="button" class="pilula" id="analisar">Analisar resultados</button>
@@ -137,7 +183,7 @@
 
     <nav class="dock" id="dock" aria-label="Navegação">
       <button type="button" data-vista="home" class="ativo"><svg viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg><span class="dica">Início</span></button>
-      <button type="button" data-vista="som"><svg viewBox="0 0 24 24"><path d="M4 12h2M8 8v8M12 5v14M16 9v6M20 12h0"/></svg><span class="dica">Estúdio de som</span></button>
+      <button type="button" data-vista="som"><svg viewBox="0 0 24 24"><path d="M4 12h2M8 8v8M12 5v14M16 9v6M20 12h0"/></svg><span class="dica">Som do sistema</span></button>
       <button type="button" data-vista="painel"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="16" rx="3"/><rect x="13" y="4" width="7" height="7" rx="3"/><rect x="13" y="13" width="7" height="7" rx="3"/></svg><span class="dica">Controles</span></button>
       <button type="button" data-vista="grade"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg><span class="dica">Grade de widgets</span></button>
       <button type="button" data-vista="fluxos"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6.5l7 4.5M8.5 17.5l7-4.5"/></svg><span class="dica">Diagramas</span></button>
@@ -149,6 +195,7 @@
       <button type="button" id="fixar"><svg viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/></svg><span class="dica">Fixar aberta</span></button>
       <button type="button" id="recolher"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg><span class="dica">Recolher</span></button>
     </nav>
+    <i class="contagem" id="contagem" aria-hidden="true"></i>
   </div>
 </div>
 <script src="ilha.js"></script>
