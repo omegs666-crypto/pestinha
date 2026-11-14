@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pestinha</title>
+<link rel="stylesheet" href="ilha.css">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+  <div class="ilha" id="ilha" data-estado="compacta">
+    <!-- Pílula compacta: nome, relógio e emoção, como a pílula do Coucou -->
+    <div class="compacta" id="compacta">
+      <span class="ponto" id="ponto"></span>
+      <span class="nome" id="nome">Pestinha</span>
+      <span class="relogio" id="relogio">--:--</span>
+      <span class="emocao" id="emocao">—</span>
+    </div>
+
+    <!-- Visão expandida: abas em pílulas e um quadro por aba -->
+    <div class="aberta" id="aberta">
+      <header class="barra">
+        <nav class="abas" role="tablist" aria-label="Seções">
+          <button type="button" role="tab" data-aba="painel" class="ativa">Painel</button>
+          <button type="button" role="tab" data-aba="layout">Layout</button>
+          <button type="button" role="tab" data-aba="diagramas">Diagramas</button>
+          <button type="button" role="tab" data-aba="musica">Música</button>
+          <button type="button" role="tab" data-aba="chat">Chat</button>
+        </nav>
+        <div class="acoes">
+          <button type="button" class="icone" id="fixar" title="Fixar: não recolher sozinha">Fixar</button>
+          <button type="button" class="icone" id="fechar" title="Recolher">✕</button>
+        </div>
+      </header>
+
+      <section class="aba" data-secao="painel">
+        <iframe data-src="moxen/centro/index.html" data-quadro="centro" title="Painel de controles"></iframe>
+      </section>
+      <section class="aba oculta" data-secao="layout">
+        <iframe data-src="moxen/parrilla/index.html" data-quadro="parrilla" title="Layout em grade"></iframe>
+      </section>
+      <section class="aba oculta" data-secao="diagramas">
+        <iframe data-src="moxen/eslabon/index.html" data-quadro="eslabon" title="Diagramas de interação"></iframe>
+      </section>
+
+      <section class="aba oculta" data-secao="musica">
+        <div class="cartao musica">
+          <div class="topo">
+            <span class="estado" id="musica-estado">Captura parada</span>
+            <button type="button" class="pilula" id="musica-botao">Iniciar áudio</button>
+          </div>
+          <canvas id="espectro" aria-label="Espectro do áudio do sistema"></canvas>
+          <div class="medidores">
+            <span>Nível <b id="rms">0</b></span>
+            <span>Pico <b id="pico">0</b></span>
+            <span class="aviso">Captura local do áudio que sai do PC. Nada é gravado.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="aba oculta" data-secao="chat">
+        <div class="cartao chat">
+          <div class="topo">
+            <select id="modelo" aria-label="Modelo local"></select>
+            <button type="button" class="pilula" id="atualizar" title="Atualizar lista de modelos">Atualizar</button>
+            <label class="marca"><input type="checkbox" id="ler"> Ler respostas</label>
+          </div>
+          <div class="erro" id="erro" role="alert" hidden></div>
+          <div class="mensagens" id="mensagens" aria-live="polite"></div>
+          <div class="composer">
+            <button type="button" class="pilula" id="analisar" title="Envia métricas e logs atuais ao modelo">Analisar resultados</button>
+            <textarea id="entrada" rows="2" placeholder="Pergunte ao modelo local… (Ctrl+Enter envia)"></textarea>
+            <button type="button" class="pilula" id="ouvir" title="Transcreve sua fala com o reconhecedor local do Windows">Falar</button>
+            <button type="button" class="pilula primaria" id="enviar">Enviar</button>
+            <button type="button" class="pilula" id="parar" hidden>Parar</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script src="ilha.js"></script>
+</body>
+</html>

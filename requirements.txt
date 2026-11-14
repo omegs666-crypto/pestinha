@@ -7,6 +7,11 @@ psutil>=7.2.2
 numpy>=2.4.6
 requests>=2.32.3
 chardet>=5.2,<6
+# Ilha em WebEngine (pestinha/ui/web): Qt WebEngine + WebChannel; sem eles o app usa a ilha nativa
+PySide6-Addons>=6.11.0
+PySide6-WebEngine>=6.11.0
+# Visualizador do audio do sistema (loopback), somente analise em tempo real
+soundcard==0.4.6
 # Atalho global no Linux; Windows usa a API do sistema e macOS usa QuickMacHotKey
 pynput>=1.7.7; sys_platform == "linux"
 # Windows: leitura das janelas e do teclado

@@ -1,0 +1,80 @@
+/* Ilha dinâmica (estilo Coucou): preto puro, cantos só embaixo, cartões #141518, pílulas #0e0f11.
+   Paleta e medidas seguem o Coucou (windows/src/style.css); o acento é ciano/azul elétrico. */
+:root {
+  --preto: #000;
+  --cartao: #141518;
+  --pilula: #0e0f11;
+  --linha: rgba(255, 255, 255, .10);
+  --texto: #f5f6f8;
+  --dim: #9398a1;
+  --dim-3: #6b7079;
+  --ciano: #22d3ee;
+  --azul: #3b82f6;
+  --verde: #22c55e;
+  --vermelho: #f87171;
+  --ambar: #fbbf24;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { font: 500 12px/1.4 "Segoe UI", system-ui, sans-serif; color: var(--texto); -webkit-font-smoothing: antialiased; }
+button, select, textarea, input { font: inherit; color: inherit; }
+.oculta { display: none !important; }
+
+.ilha { width: 100%; height: 100%; background: var(--preto); border-radius: 0 0 18px 18px; overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .55); display: flex; flex-direction: column; }
+.ilha[data-estado="compacta"] .aberta { display: none; }
+.ilha[data-estado="aberta"] .compacta { display: none; }
+
+/* ----- pílula compacta ----- */
+.compacta { height: 40px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 16px;
+  color: var(--dim); cursor: pointer; white-space: nowrap; }
+.compacta .ponto { width: 7px; height: 7px; border-radius: 50%; background: var(--verde); box-shadow: 0 0 8px var(--verde); }
+.compacta .ponto.pausado { background: var(--dim-3); box-shadow: none; }
+.compacta .nome { color: var(--texto); font-weight: 600; }
+.compacta .relogio { font-variant-numeric: tabular-nums; color: var(--texto); }
+.compacta .emocao { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ----- visão expandida ----- */
+.aberta { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 12px 12px; gap: 10px; }
+.barra { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.abas { display: flex; gap: 6px; flex-wrap: nowrap; }
+.abas button, .pilula, .icone { background: var(--pilula); border: 1px solid rgba(255, 255, 255, .14); border-radius: 999px;
+  padding: 6px 13px; color: var(--dim); font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background .18s ease, color .18s ease, transform .18s cubic-bezier(.2, .8, .2, 1); }
+.abas button:hover, .pilula:hover, .icone:hover { color: var(--texto); transform: scale(1.03); }
+.abas button.ativa { background: var(--texto); color: #000; border-color: transparent; }
+.acoes { display: flex; gap: 6px; }
+.icone.ativo { color: var(--ciano); border-color: rgba(34, 211, 238, .5); }
+.pilula.primaria { background: var(--texto); color: #000; border-color: transparent; }
+.pilula:disabled { opacity: .4; cursor: default; transform: none; }
+
+.aba { flex: 1; min-height: 0; position: relative; }
+.aba iframe { width: 100%; height: 100%; border: 0; border-radius: 16px; background: transparent; display: block; }
+
+.cartao { background: var(--cartao); border: 1px solid var(--linha); border-radius: 20px; height: 100%; padding: 14px;
+  display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.topo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.estado { color: var(--dim); font-size: 12px; flex: 1; }
+.marca { color: var(--dim); font-size: 11px; display: flex; align-items: center; gap: 6px; }
+.marca input { accent-color: var(--ciano); }
+
+/* ----- música ----- */
+.musica canvas { flex: 1; min-height: 160px; width: 100%; border-radius: 14px; background: #08090b; }
+.medidores { display: flex; gap: 16px; color: var(--dim); font-size: 11px; align-items: center; }
+.medidores b { color: var(--texto); font-variant-numeric: tabular-nums; }
+.medidores .aviso { margin-left: auto; color: var(--dim-3); }
+
+/* ----- chat ----- */
+select { background: var(--pilula); border: 1px solid rgba(255, 255, 255, .14); border-radius: 999px; padding: 6px 12px; min-width: 200px; color-scheme: dark; }
+.mensagens { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px; scrollbar-width: thin; scrollbar-color: #2a2c31 transparent; }
+.bolha { max-width: 78%; padding: 9px 12px; border-radius: 16px; white-space: pre-wrap; word-wrap: break-word; font-size: 12.5px; }
+.bolha.usuario { align-self: flex-end; background: var(--texto); color: #000; border-bottom-right-radius: 6px; }
+.bolha.assistente { align-self: flex-start; background: var(--pilula); border: 1px solid var(--linha); border-bottom-left-radius: 6px; }
+.bolha.sistema { align-self: center; color: var(--dim); font-size: 11px; }
+.erro { color: var(--vermelho); font-size: 11px; background: rgba(248, 113, 113, .08); border: 1px solid rgba(248, 113, 113, .25);
+  border-radius: 12px; padding: 6px 10px; }
+.composer { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
+.composer textarea { flex: 1; min-width: 200px; height: 52px; resize: none; background: var(--pilula); border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 14px; padding: 8px 12px; outline: none; }
+.composer textarea:focus { border-color: rgba(34, 211, 238, .5); }

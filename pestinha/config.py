@@ -58,6 +58,7 @@ DEFAULT_PERMISSIONS = {
     "llm_modelo": "",          # modelo da LLM local (ex.: "llama3"); vazio = o padrão do servidor
     "ollama_chat_modelo": "",  # modelo local selecionado na aba Chat da ilha
     "ilha": False,             # ilha interativa no topo da tela (estilo Coucou): espreita e expande em pills
+    "ilha_web": True,          # usa a ilha em WebEngine (ui/web); False ou sem WebEngine = ilha nativa Qt
 }
 
 # (chave, rótulo, descrição) na ordem da tela inicial

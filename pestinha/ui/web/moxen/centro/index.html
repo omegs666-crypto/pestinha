@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Centro</title>
+<link rel="stylesheet" href="centro.css">
+<!-- ?tema=claro para verlo con la paleta clara -->
+<script>if (/[?&]tema=claro/.test(location.search)) document.documentElement.dataset.tema = 'claro';</script>
+</head>
+<body>
+  <!-- Aquí crea centro.js un filtro de refracción por mosaico (un mapa de
+       desplazamiento del tamaño exacto de cada cristal). -->
+  <svg class="ce-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs id="ce-filtros"></defs></svg>
+
+  <main class="ce-escena" data-centro>
+    <!-- el fondo vivo: orbes grandes y borrosos (canvas), aros y discos nítidos
+         que el cristal curva al pasar por debajo, la luz de la linterna y el
+         velo que sube y baja con el brillo -->
+    <div class="ce-fondo" aria-hidden="true">
+      <canvas class="ce-orbes"></canvas>
+      <svg class="ce-aros" viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid slice" focusable="false">
+        <g class="ce-g ce-g1" fill="none" stroke="#fff">
+          <circle cx="250" cy="640" r="96" stroke-opacity=".5" stroke-width="3.5"/>
+          <circle cx="250" cy="640" r="160" stroke-opacity=".4" stroke-width="3"/>
+          <circle cx="250" cy="640" r="226" stroke-opacity=".32" stroke-width="3"/>
+          <circle cx="250" cy="640" r="296" stroke-opacity=".24" stroke-width="3"/>
+          <circle cx="250" cy="640" r="372" stroke-opacity=".18" stroke-width="3"/>
+        </g>
+        <g class="ce-g ce-g2">
+          <circle cx="1040" cy="150" r="128" fill="#fff" fill-opacity=".1" stroke="#fff" stroke-opacity=".36" stroke-width="2"/>
+          <circle cx="1040" cy="150" r="74" fill="var(--ce-aro-acento)" fill-opacity=".5"/>
+          <circle cx="1040" cy="150" r="206" fill="none" stroke="#fff" stroke-opacity=".26" stroke-width="3"/><circle cx="1040" cy="150" r="262" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="22"/>
+        </g>
+        <g class="ce-g ce-g3" stroke="#fff" stroke-linecap="round" stroke-width="4" stroke-opacity=".34">
+          <path d="M470 -40 1010 840M540 -40 1080 840M610 -40 1150 840M680 -40 1220 840M750 -40 1290 840M820 -40 1360 840"/>
+        </g>
+        <g class="ce-g ce-g4" fill="#fff" fill-opacity=".5">
+          <circle cx="640" cy="90" r="3.2"/><circle cx="700" cy="90" r="3.2"/><circle cx="760" cy="90" r="3.2"/><circle cx="820" cy="90" r="3.2"/><circle cx="880" cy="90" r="3.2"/>
+          <circle cx="640" cy="150" r="3.2"/><circle cx="700" cy="150" r="3.2"/><circle cx="760" cy="150" r="3.2"/><circle cx="820" cy="150" r="3.2"/><circle cx="880" cy="150" r="3.2"/>
+          <circle cx="400" cy="720" r="3.2"/><circle cx="460" cy="720" r="3.2"/><circle cx="520" cy="720" r="3.2"/><circle cx="580" cy="720" r="3.2"/>
+          <circle cx="400" cy="760" r="3.2"/><circle cx="460" cy="760" r="3.2"/><circle cx="520" cy="760" r="3.2"/><circle cx="580" cy="760" r="3.2"/>
+        </g>
+        <g class="ce-g ce-g5">
+          <path d="M1280 470a180 180 0 0 0-180 180 180 180 0 0 0 180 180z" fill="#fff" fill-opacity=".12"/>
+          <circle cx="1130" cy="690" r="46" fill="var(--ce-aro-acento)" fill-opacity=".55"/>
+        </g>
+      </svg>
+      <i class="ce-spot"></i>
+      <i class="ce-bruma"></i>
+      <i class="ce-velo"></i>
+      <i class="ce-grano"></i>
+    </div>
+
+    <div class="ce-rejilla">
+      <!-- BRILLO · deslizador vertical: llena con un filo de luz y su ícono (sol) crece con el nivel -->
+      <div class="ce-t ce-desl" data-desl="brillo" data-valor="72" tabindex="0" role="slider" aria-orientation="vertical" aria-label="Brilho" aria-valuemin="0" aria-valuemax="100" aria-valuenow="72" aria-valuetext="72 %" style="--i:0; grid-area: bri">
+        <div class="ce-llena" aria-hidden="true"><i class="ce-luz"></i></div>
+        <div class="ce-rot" aria-hidden="true"><span class="ce-rot-nom">Brilho</span><span class="ce-rot-val"><b>72</b>%</span></div>
+        <svg class="ce-ico ce-ico-sol" viewBox="0 0 24 24" aria-hidden="true">
+          <circle class="ce-sol-disco" cx="12" cy="12" r="4"/>
+          <g class="ce-rayos"><path d="M19 12h2.8"/><path d="M16.95 16.95l1.98 1.98"/><path d="M12 19v2.8"/><path d="M7.05 16.95l-1.98 1.98"/><path d="M5 12H2.2"/><path d="M7.05 7.05 5.07 5.07"/><path d="M12 5V2.2"/><path d="M16.95 7.05l1.98-1.98"/></g>
+        </svg>
+      </div>
+
+      <!-- VOLUMEN · el mismo gesto, con ondas que aparecen y un tache al silenciar -->
+      <div class="ce-t ce-desl" data-desl="volumen" data-valor="42" tabindex="0" role="slider" aria-orientation="vertical" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42" aria-valuetext="42 %" style="--i:1; grid-area: vol">
+        <div class="ce-llena" aria-hidden="true"><i class="ce-luz"></i></div>
+        <div class="ce-rot" aria-hidden="true"><span class="ce-rot-nom">Volume</span><span class="ce-rot-val"><b>42</b>%</span></div>
+        <svg class="ce-ico ce-ico-vol" viewBox="0 0 24 24" aria-hidden="true">
+          <path class="ce-vol-cuerpo" d="M4.2 9.6h2.9l4.1-3.5a.75.75 0 0 1 1.25.57v10.66a.75.75 0 0 1-1.25.57L7.1 14.4H4.2a.9.9 0 0 1-.9-.9v-3a.9.9 0 0 1 .9-.9z"/>
+          <path class="ce-onda" d="M15.5 9.7a3.4 3.4 0 0 1 0 4.6"/>
+          <path class="ce-onda" d="M17.7 7.5a6.5 6.5 0 0 1 0 9"/>
+          <path class="ce-onda" d="M19.9 5.3a9.6 9.6 0 0 1 0 13.4"/>
+          <g class="ce-tache"><path d="M16 9.8l4.6 4.4"/><path d="M20.6 9.8L16 14.2"/></g>
+        </svg>
+      </div>
+
+      <!-- CONECTIVIDAD · cuatro botones redondos con resorte; «Avión» apaga a los demás en cascada -->
+      <section class="ce-t ce-con" style="--i:2; grid-area: con" aria-label="Conectividade">
+        <button class="ce-bt" type="button" data-bt="red" aria-pressed="true" style="--bt-on: var(--ce-bt-blanco)">
+          <span class="ce-bt-c"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="ce-w3" d="M3.2 9.3a12.7 12.7 0 0 1 17.6 0"/><path class="ce-w2" d="M6.5 12.7a8.2 8.2 0 0 1 11 0"/><path class="ce-w1" d="M9.6 16a3.7 3.7 0 0 1 4.8 0"/><circle class="ce-w0" cx="12" cy="19.2" r="1.3"/></svg></span>
+          <span class="ce-bt-n">Rede</span>
+        </button>
+        <button class="ce-bt" type="button" data-bt="cerca" aria-pressed="true" style="--bt-on: var(--ce-bt-blanco)">
+          <span class="ce-bt-c"><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="ce-r0" cx="12" cy="12" r="1.9"/><path class="ce-r1" d="M8.1 8.1a5.6 5.6 0 0 0 0 7.8M15.9 8.1a5.6 5.6 0 0 1 0 7.8"/><path class="ce-r2" d="M5.2 5.2a9.7 9.7 0 0 0 0 13.6M18.8 5.2a9.7 9.7 0 0 1 0 13.6"/></svg></span>
+          <span class="ce-bt-n">Perto</span>
+        </button>
+        <button class="ce-bt" type="button" data-bt="avion" aria-pressed="false" style="--bt-on: var(--ce-naranja)">
+          <span class="ce-bt-c"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="ce-avion" d="M20.9 15.1v-1.5L13.3 9V4.4a1.3 1.3 0 0 0-2.6 0V9L3.1 13.6v1.5l7.6-2.2v4.7L8.9 19v1.5l3.1-.85 3.1.85V19l-1.8-1.4v-4.7z"/></svg></span>
+          <span class="ce-bt-n">Avião</span>
+        </button>
+        <button class="ce-bt" type="button" data-bt="datos" aria-pressed="true" style="--bt-on: var(--ce-rosa)">
+          <span class="ce-bt-c"><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="ce-b1" x="3.6" y="14.2" width="3.2" height="6.2" rx="1.1"/><rect class="ce-b2" x="8.5" y="10.6" width="3.2" height="9.8" rx="1.1"/><rect class="ce-b3" x="13.4" y="7" width="3.2" height="13.4" rx="1.1"/><rect class="ce-b4" x="18.3" y="3.4" width="3.2" height="17" rx="1.1"/></svg></span>
+          <span class="ce-bt-n">Dados</span>
+        </button>
+      </section>
+
+      <!-- ÁUDIO DO SISTEMA: cartão ligado ao loopback real (ver ilha.js); não é um reprodutor falso -->
+      <section class="ce-t ce-musica" style="--i:3; grid-area: rep" aria-label="Áudio do sistema">
+        <p class="ce-mus-t">Áudio do sistema</p>
+        <p class="ce-mus-s" data-mus-estado>Captura parada</p>
+        <div class="ce-mus-eq" data-eq aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </section>
+
+      <!-- CONCENTRACIÓN · un interruptor de resorte: la bolita se estira al pulsarla y se puede arrastrar -->
+      <section class="ce-t ce-foc" style="--i:4; grid-area: foc" aria-label="Foco">
+        <span class="ce-luna"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.4A8.3 8.3 0 0 1 9.6 3.8a8.3 8.3 0 1 0 10.6 10.6z"/></svg></span>
+        <div class="ce-foc-txt"><p class="ce-foc-t">Foco</p><p class="ce-foc-s" aria-live="polite">Desativada</p></div>
+        <button class="ce-sw" type="button" role="switch" aria-checked="false" aria-label="Foco"><span class="ce-sw-pista"></span><span class="ce-sw-bola"></span></button>
+      </section>
+
+      <!-- LINTERNA · el mosaico entero es el botón: se enciende con un círculo de luz y alumbra la escena -->
+      <button class="ce-t ce-tb ce-lin" type="button" aria-pressed="false" style="--i:5; grid-area: lin; --tb-on: var(--ce-lin-fondo)">
+        <i class="ce-tb-on" aria-hidden="true"></i>
+        <svg class="ce-tb-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="ce-lin-c" d="M7.8 3h8.4v3.9l-1.7 2.3V19.4a1.6 1.6 0 0 1-1.6 1.6h-1.8a1.6 1.6 0 0 1-1.6-1.6V9.2L7.8 6.9z"/><path class="ce-lin-h" d="M12 11.6v2.4"/><g class="ce-lin-r"><path d="M3.4 4.2l1.6.9"/><path d="M20.6 4.2L19 5.1"/><path d="M2.8 9h1.8"/><path d="M21.2 9h-1.8"/></g></svg>
+        <span class="ce-tb-n">Lanterna</span>
+      </button>
+
+      <!-- ROTACIÓN -->
+      <button class="ce-t ce-tb ce-rotb" type="button" aria-pressed="false" style="--i:6; grid-area: rot; --tb-on: var(--ce-naranja)">
+        <i class="ce-tb-on" aria-hidden="true"></i>
+        <svg class="ce-tb-ico" viewBox="0 0 24 24" aria-hidden="true"><g class="ce-rot-flechas"><path d="M20.4 12.2a8.4 8.4 0 1 1-2.5-6"/><path d="M20.5 3.8v3.9h-3.9"/></g><rect class="ce-cand" x="9.3" y="11.7" width="5.4" height="4.2" rx="1.2"/><path class="ce-cand-a" d="M10.4 11.7v-1.2a1.6 1.6 0 0 1 3.2 0v1.2"/></svg>
+        <span class="ce-tb-n">Rotação</span>
+      </button>
+    </div>
+
+    <p class="ce-pista">Arraste um controle · toque em um mosaico</p>
+  </main>
+  <script>
+  window.ceAviso = (nome, valor) => parent.postMessage({ tipo: "acao", origem: "painel", nome, valor }, "*");
+  window.addEventListener("message", ev => {
+    const d = ev.data || {};
+    if (ev.source !== parent || d.tipo !== "niveis") return;
+    const barras = document.querySelectorAll("[data-eq] i");
+    barras.forEach((b, i) => b.style.setProperty("--nivel", (d.bandas[Math.floor(i * d.bandas.length / barras.length)] || 0).toFixed(3)));
+    const txt = document.querySelector("[data-mus-estado]");
+    if (txt) txt.textContent = d.ativo ? "Ao vivo · " + d.taxa / 1000 + " kHz" : "Captura parada";
+  });
+</script>
+  <script src="centro.js"></script>
+</body>
+</html>

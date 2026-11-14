@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel em grade</title>
+<!-- una hoja por familia -->
+<link rel="stylesheet" href="parrilla.css">
+<!-- ?tema=claro (gris y blanco) es el de siempre; ?tema=oscuro es el mismo panel sobre grafito azulado -->
+<script>if (/[?&]tema=claro/.test(location.search)) document.documentElement.dataset.tema = 'claro'; else if (/[?&]tema=oscuro/.test(location.search)) document.documentElement.dataset.tema = 'oscuro';</script>
+</head>
+<body>
+  <!-- parrilla.js construye los widgets de la rejilla (según la lista de la llamada de abajo), la paleta y el panel de datos;
+       aquí está la tarjeta con el sitio de cada cosa. -->
+  <main class="pa-escena" data-parrilla>
+    <div class="pa-fondo" aria-hidden="true"><i class="pa-halo pa-h1"></i><i class="pa-halo pa-h2"></i><i class="pa-grano"></i></div>
+
+    <section class="pa-card" aria-labelledby="pa-titulo">
+      <header class="pa-cab-card">
+        <span class="pa-marca" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7.5" height="9" rx="2.2"/><rect x="13" y="3.5" width="7.5" height="5" rx="2.2"/><rect x="13" y="10.5" width="7.5" height="10" rx="2.2"/><rect x="3.5" y="14.5" width="7.5" height="6" rx="2.2"/></svg></span>
+        <div class="pa-cab-t">
+          <h1 id="pa-titulo">Painel</h1>
+          <p>Arraste um widget pela barra superior; a alça do canto muda o tamanho.</p>
+        </div>
+        <div class="pa-acciones">
+          <button class="pa-b pa-b-sec" type="button" data-restaurar>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M4 4v5h5"/></svg><span>Restaurar</span>
+          </button>
+          <button class="pa-b pa-b-pri" type="button" data-guardar>
+            <svg class="pa-i-guardar" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>
+            <svg class="pa-i-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg>
+            <span data-guardar-txt>Salvar disposição</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="pa-cuerpo">
+        <div class="pa-izq">
+          <div class="pa-caja" data-caja>
+            <svg class="pa-rejilla" data-rejilla aria-hidden="true"></svg>
+            <i class="pa-encaje" data-encaje aria-hidden="true"></i>
+            <div class="pa-vacio" data-vacio aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>Arraste um widget aqui</div>
+            <div class="pa-widgets" data-widgets role="list" aria-label="Widgets del panel"></div>
+          </div>
+        </div>
+
+        <aside class="pa-der">
+          <div class="pa-paleta">
+            <h2>Widgets</h2>
+            <p class="pa-der-s">Arraste um para o painel.</p>
+            <div class="pa-pal-lista" data-paleta></div>
+          </div>
+          <div class="pa-datos">
+            <div class="pa-datos-cab"><h2>Disposição</h2><span class="pa-datos-ok" data-datos-ok><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.8 8.4l2.8 2.8L12.2 5.4" pathLength="1"/></svg>Salva</span></div>
+            <p class="pa-der-s">Cada widget: [x, y, largura, altura]</p>
+            <pre class="pa-codigo" data-codigo aria-label="Disposição salva como datos"></pre>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <p class="pa-oculto" role="status" aria-live="polite" data-vivo></p>
+  </main>
+
+  <script src="parrilla.js"></script>
+  <script>
+  // Só monta quando a ilha manda o layout salvo (ou nada): a ponte fica no pai.
+  window.addEventListener('message', ev => {
+    const d = ev.data || {};
+    if (ev.source !== parent) return;
+    if (d.tipo === 'init' && !window.parrilla) {
+      const opc = { alCambiar: items => parent.postMessage({ tipo: 'salvar', nome: 'layout', dados: JSON.stringify(items) }, '*') };
+      if (Array.isArray(d.layout) && d.layout.length) opc.widgets = d.layout;
+      window.parrilla = Parrilla(document.querySelector('[data-parrilla]'), opc);
+    }
+    if (d.tipo === 'metricas') {
+      const v = d.dados || {};
+      document.querySelectorAll('[data-live]').forEach(el => {
+        const chave = el.dataset.live;
+        if (chave === 'logs' && Array.isArray(v.logs)) {
+          el.innerHTML = v.logs.slice(-6).map(l => '<li><i style="--c:#6f9bff"></i>' + String(l).replace(/[<&]/g, c => c === '<' ? '&lt;' : '&amp;') + '<em></em></li>').join('') || '<li><i></i>Sem eventos<em></em></li>';
+        } else if (v[chave] !== undefined) {
+          el.textContent = v[chave];
+        }
+      });
+      document.querySelectorAll('[data-live-p]').forEach(el => {
+        const p = Number(v[el.dataset.livep]);
+        if (Number.isFinite(p)) el.style.setProperty('--p', Math.max(0, Math.min(1, p / 100)).toFixed(3));
+      });
+    }
+  });
+</script>
+</body>
+</html>

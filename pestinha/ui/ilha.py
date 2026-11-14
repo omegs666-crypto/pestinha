@@ -427,7 +427,7 @@ class Ilha(QWidget):
         self._cancel_chat_button.hide()
         composer.addWidget(self._cancel_chat_button)
         self._send_button = _button("Enviar", primary=True)
-        self._send_button.clicked.connect(self._enviar_chat)
+        self._send_button.clicked.connect(lambda: self._enviar_chat())   # clicked passa `checked`; não é o prompt
         composer.addWidget(self._send_button)
         layout.addLayout(composer)
         return card

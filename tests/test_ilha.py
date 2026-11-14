@@ -19,6 +19,13 @@ from pestinha.world.arrastavel import load_positions  # noqa: E402
 from pestinha import log as log_module  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _ilha_nativa(monkeypatch):
+    """Estes testes cobrem a ilha nativa Qt; a versão WebEngine tem testes próprios."""
+    from pestinha.ui import web_island
+    monkeypatch.setattr(web_island, "WEB_OK", False)
+
+
 @pytest.fixture
 def pet_app(tmp_path):
     app_qt = QApplication.instance() or QApplication([])
@@ -114,6 +121,7 @@ def test_arraste_salva_posicao(pet_app):
 
 def test_pills_abrem_paineis_e_recolhem(pet_app):
     ilha = pet_app.ilha
+    pet_app.fullscreen = False      # isola do estado da área de trabalho (uma tela cheia real bloqueia os painéis)
     ilha.abrir()
     ilha._open_neural.click()
     assert "neural" in pet_app.floats.opened
@@ -199,6 +207,18 @@ def test_envio_de_contexto_usa_snapshot_explicito_e_modelo_escolhido(pet_app):
     assert calls[0][1][-1]["content"].startswith("diagnóstico")
     assert context in calls[0][1][-1]["content"]
     assert calls[0][1][0]["role"] == "system"
+    ilha._chat_concluido()
+
+
+def test_botao_enviar_do_chat_envia_o_texto_digitado(pet_app):
+    """Regressão: clicked passa `checked` (False) como argumento e quebrava o envio."""
+    ilha = pet_app.ilha
+    ilha._model_combo.addItem("llama3.2")
+    calls = []
+    ilha._ollama.chat_stream_async = lambda model, messages: calls.append(messages)
+    ilha._chat_input.setPlainText("olá pelo botão")
+    ilha._send_button.click()
+    assert calls and calls[0][-1]["content"] == "olá pelo botão"
     ilha._chat_concluido()
 
 

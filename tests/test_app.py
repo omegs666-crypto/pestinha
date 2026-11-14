@@ -178,3 +178,8 @@ def test_cutucada_habitua_na_rede(buddy):
         buddy.brain.stimulate({"POKE": 0.8})
         buddy.brain.step(100)
     assert buddy.brain.efficacy()["POKE"] < before
+
+@pytest.fixture(autouse=True)
+def _sem_tela_cheia(monkeypatch):
+    """A área de trabalho real pode estar em tela cheia (vídeo, jogo); os painéis dependem disso."""
+    monkeypatch.setattr("pestinha.app.senses.is_fullscreen", lambda: False)

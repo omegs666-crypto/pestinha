@@ -14,6 +14,8 @@ do sistema ou um comando local. Nenhum áudio é enviado a serviços externos.
   cutucar) ou perto dele no cantinho do castigo.
 - Se uma janela cobre a tela inteira (para não aparecer em jogos ou apresentações).
 - A posição e o tamanho das janelas abertas, para ele poder pousar nas barras de título.
+- O áudio que sai do computador (loopback), **somente depois que você clica em "Iniciar áudio"** na aba
+  Música da ilha. Ele só calcula níveis e espectro para o visualizador: nada é gravado, guardado ou enviado.
 - O microfone **somente enquanto você clica em "Falar"** na aba Chat local.
   No Windows, a transcrição usa o mecanismo `System.Speech` em português
   (`pt-BR`), dura até 12 segundos e não é gravada em arquivo.
@@ -48,6 +50,8 @@ Do app e seu, direto em `memory/`:
 | `permissions.json` | As opções que você escolheu |
 | `timeline.csv` | Uma linha por minuto: hora, categoria de programa, trocas de janela, ocioso. Só com "Registrar minha rotina" ligado, que vem desligado. O pet ainda não usa esse histórico |
 | `panels.json` | Posição dos painéis, do notebook e da placa |
+| `web_layout.json` | Disposição dos widgets do aba Layout da ilha (só ids, tipos e posições) |
+| `web_diagrama.json` | Fluxos de interação desenhados na aba Diagramas da ilha |
 | `logs/pestinha.log` | Mensagens do programa e erros inesperados (sem conteúdo de janelas) |
 
 De cada personagem, em `memory/pets/<pet>/` (um personagem não lê a memória do outro):

@@ -100,3 +100,8 @@ def test_monitor_nao_crasha_com_dimensao_de_rede_invalida(pet_app):
     surface = QImage(1000, 620, QImage.Format_ARGB32)
     monitor.render(surface)
     assert not surface.isNull()
+
+@pytest.fixture(autouse=True)
+def _sem_tela_cheia(monkeypatch):
+    """A área de trabalho real pode estar em tela cheia (vídeo, jogo); os painéis dependem disso."""
+    monkeypatch.setattr("pestinha.app.senses.is_fullscreen", lambda: False)

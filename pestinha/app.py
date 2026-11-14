@@ -74,7 +74,7 @@ from .paths import Paths
 from .sense import senses
 from .sense.timeline import TimelineRecorder
 from .ui.float_manager import FloatManager
-from .ui.ilha import Ilha
+from .ui.web_island import criar_ilha
 from .ui.ui import PanicHotkey, Tray
 from .world.mischief import MischiefEngine
 
@@ -191,7 +191,7 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         self._c2 = {"carinho": False, "preso": False, "sentado": False,
                     "dormindo": False, "fugas": self.castigo.vitorias["fugir"],
                     "emocao": None}
-        self.ilha = Ilha(self)                      # ilha interativa no topo (estilo Coucou)
+        self.ilha = criar_ilha(self)                # ilha no topo: WebEngine (Coucou) ou nativa como fallback
 
         # ----- reflexos e medições -----
         self.in_flight = False      # voando depois de um arremesso

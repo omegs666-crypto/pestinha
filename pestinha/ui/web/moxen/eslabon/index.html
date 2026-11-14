@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagramas</title>
+<!-- una hoja por familia: si van juntas, a veces solo llega la primera -->
+<link rel="stylesheet" href="eslabon.css">
+<!-- ?tema=oscuro: la misma demo en tinta azulada, con el violeta aclarado -->
+<script>if (/[?&]tema=oscuro/.test(location.search)) document.documentElement.dataset.tema = 'oscuro';</script>
+</head>
+<body>
+  <!-- eslabon.js construye los nodos, los cables y el panel del paso (el flujo de ejemplo está en flujoInicial(), dentro del script).
+       Aquí van los marcos fijos: [data-lienzo] es el flujo, [data-panel] la configuración del paso elegido,
+       [data-probar] lanza el evento de ejemplo y [data-vivo] lee en voz alta lo que ocurre. -->
+  <main class="es-escena" data-eslabon>
+    <div class="es-fondo" aria-hidden="true"><i class="es-h1"></i><i class="es-h2"></i></div>
+
+    <header class="es-barra">
+      <div class="es-marca">
+        <span class="es-glifo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10.2 13.8a3.8 3.8 0 0 0 5.4 0l2.9-2.9a3.8 3.8 0 0 0-5.4-5.4l-.9.9"/><path d="M13.8 10.2a3.8 3.8 0 0 0-5.4 0l-2.9 2.9a3.8 3.8 0 0 0 5.4 5.4l.9-.9"/></svg></span>
+        <div class="es-titulos">
+          <p class="es-etq">Automação</p>
+          <h1>Aviso de pedido novo</h1>
+        </div>
+      </div>
+      <p class="es-estado" data-estado data-e="borrador" role="status"><i aria-hidden="true"></i><span data-estado-txt>Rascunho</span></p>
+      <div class="es-ctrl">
+        <div class="es-evento" role="radiogroup" aria-label="Evento de exemplo">
+          <span class="es-evento-et" aria-hidden="true"><span class="es-largo">Evento de exemplo</span><span class="es-corto">Evento</span></span>
+          <div class="es-seg" data-seg-evento style="--n:2;--i:0">
+            <span class="es-seg-fondo" aria-hidden="true"></span>
+            <button type="button" role="radio" aria-checked="true" data-evento="completo">Completo</button>
+            <button type="button" role="radio" aria-checked="false" data-evento="sin">Sem e-mail</button>
+          </div>
+        </div>
+        <button class="es-reset" type="button" data-reset>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 12a7.2 7.2 0 1 0 2.2-5.2M4.8 4.6v3.6h3.6"/></svg>Restaurar
+        </button>
+        <button class="es-probar" type="button" data-probar data-e="reposo">
+          <span class="es-pr-ic" aria-hidden="true">
+            <svg class="pr-play" viewBox="0 0 24 24"><path d="M8.6 5.8v12.4L18.6 12z"/></svg>
+            <svg class="pr-ok" viewBox="0 0 24 24"><path d="M6.6 12.6l3.8 3.8 7.2-8.2" pathLength="1"/></svg>
+            <i class="pr-giro"></i>
+          </span>
+          <span data-probar-txt>Testar</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="es-cuerpo">
+      <section class="es-lienzo" data-lienzo aria-label="Fluxo da automação">
+        <div class="es-mundo" data-mundo>
+          <svg class="es-cables" data-cables aria-hidden="true">
+            <g class="es-pulso is-off" data-pulso><circle class="pu-halo" r="19"/><circle class="pu-nucleo" r="6"/></g>
+          </svg>
+        </div>
+        <p class="es-pista" data-pista><kbd>+</kbd> adiciona um passo <span>·</span> arraste um dado para um campo<span class="es-tec"> <span>·</span> <kbd>↑</kbd><kbd>↓</kbd> percorrem</span></p>
+      </section>
+      <aside class="es-panel" data-panel aria-label="Configuração do passo"></aside>
+    </div>
+
+    <p class="es-vivo" role="status" aria-live="polite" data-vivo></p>
+  </main>
+
+  <script src="eslabon.js"></script>
+  <script>
+  // O diagrama é salvo pela ilha: a cada mudança envia o fluxo; ao abrir recebe o último salvo.
+  window.addEventListener('message', ev => {
+    const d = ev.data || {};
+    if (ev.source !== parent || d.tipo !== 'init' || window.eslabon) return;
+    const opc = { alCambiar: ({ flujo }) => parent.postMessage({ tipo: 'salvar', nome: 'diagrama', dados: JSON.stringify({ flujo }) }, '*') };
+    if (d.flujo && Array.isArray(d.flujo)) opc.flujo = d.flujo;
+    window.eslabon = Eslabon(document.querySelector('[data-eslabon]'), opc);
+  });
+</script>
+</body>
+</html>
