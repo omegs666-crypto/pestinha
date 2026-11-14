@@ -176,6 +176,7 @@ class SessaoMixin:
             ("o cérebro", lambda: self.brain.save(str(self.state_file))),
             ("a homeostase", lambda: self.drives.save(self.pet_paths.drives)),
             ("a memória", self.memory.save),
+            ("a convivência", self.convivencia.salvar),
             ("o cantinho", self.castigo.salvar),
             ("o condicionamento", self.conditioning.save),
             ("o protesto", self.protest_ctl.save),

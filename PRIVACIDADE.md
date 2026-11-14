@@ -51,7 +51,7 @@ Do app e seu, direto em `memory/`:
 | `timeline.csv` | Uma linha por minuto: hora, categoria de programa, trocas de janela, ocioso. Só com "Registrar minha rotina" ligado, que vem desligado. O pet ainda não usa esse histórico |
 | `panels.json` | Posição dos painéis, do notebook e da placa |
 | `web_layout.json` | Disposição dos widgets do aba Layout da ilha (só ids, tipos e posições) |
-| `web_diagrama.json` | Fluxos de interação desenhados na aba Diagramas da ilha |
+| `web_diagrama.json` | Fluxos de interação desenhados na aba Diagramas da ilha (diagrama livre) |
 | `logs/pestinha.log` | Mensagens do programa e erros inesperados (sem conteúdo de janelas) |
 
 De cada personagem, em `memory/pets/<pet>/` (um personagem não lê a memória do outro):
@@ -64,6 +64,8 @@ De cada personagem, em `memory/pets/<pet>/` (um personagem não lê a memória d
 | `drives.json` | Energia, estimulação e carência |
 | `protest.json`, `sad_protest.json` | Insatisfação e tristeza |
 | `castigo.json` | Fugas do cantinho, rancor e receio |
+| `convivencia.json` | Contagens do que você faz com ele (cutucadas, carinhos, dispensas, arremessos) e quais falas você respondeu. Não guarda texto seu nem conteúdo de janelas |
+| `reacoes.json` | Reações que você configura na aba Diagramas (gatilho, falas e ações) e se as falas com IA local estão ligadas |
 | `.migrado` | Só existe se a memória veio da versão antiga: quando migrou e o hash de cada arquivo |
 
 Quem usou uma versão antiga (arquivos soltos em `memory/`) tem a memória migrada sozinha na primeira

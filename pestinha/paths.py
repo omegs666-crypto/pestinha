@@ -95,6 +95,16 @@ class PetPaths:
         return self.base / "castigo.json"
 
     @property
+    def convivencia(self):
+        """O que ele lembra de você: contagens de interação e o que você responde."""
+        return self.base / "convivencia.json"
+
+    @property
+    def reacoes(self):
+        """Reações configuradas na aba Diagramas: gatilho, fala e ramos sim/não."""
+        return self.base / "reacoes.json"
+
+    @property
     def marcador(self):
         """Existe só depois que a migração deste pet foi validada e concluída."""
         return self.base / ".migrado"

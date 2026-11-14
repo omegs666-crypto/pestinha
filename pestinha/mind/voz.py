@@ -11,6 +11,7 @@ senão, a voz do Windows (System.Speech) via PowerShell. Tudo local, sem interne
 sempre em processo/thread à parte — nunca trava a tela.
 """
 
+import random
 import subprocess
 import sys
 import threading
@@ -24,11 +25,12 @@ from ..log import log
 
 class Voz:
     """Escolhe a frase da emoção atual e fala em voz alta (TTS local), respeitando um intervalo mínimo."""
-    def __init__(self, perms, conteudo, debug=lambda: False):
-        """Guarda as permissões, o conteúdo do pet e o relógio do último comentário."""
+    def __init__(self, perms, conteudo, debug=lambda: False, pesos=lambda fala: 1.0):
+        """Guarda as permissões, o conteúdo do pet e o relógio do último comentário. `pesos` diz o peso de cada fala."""
         self.perms = perms
         self.conteudo = conteudo
         self.debug = debug
+        self.pesos = pesos
         self._ultimo = 0.0
         self._frases = {}             # motivo -> config.Notes
         self._falando = False         # já tem uma fala em andamento
@@ -49,7 +51,9 @@ class Voz:
         for m in (motivo, "_padrao"):
             notas = self._notas(m)
             if notas.has_lines():
-                return notas.pick()
+                opcoes = [l for l in notas.lines if l != notas.last] if len(notas.lines) > 2 else notas.lines
+                notas.last = random.choices(opcoes, weights=[self.pesos(l) for l in opcoes])[0]
+                return notas.last
         return {
             "feliz": "tô feliz!", "contente": "hmm, que bom", "curioso": "ah é?",
             "observando": "tô de olho", "bravo": "tô bravo!", "triste": "tô triste...",
@@ -59,19 +63,33 @@ class Voz:
             "fogos": "foooogos!",
         }.get(motivo, motivo)
 
+    def frase(self, motivo):
+        """Uma frase do motivo, sorteada com peso pelo que você já respondeu (não fala nada)."""
+        return self._frase(motivo)
+
     def falar(self, motivo, now=None):
         """Comenta um motivo/emoção em voz alta, se a voz estiver ligada e passou o intervalo."""
-        if not self.ligado():
+        return self.dizer(self._frase(motivo), now, motivo)
+
+    def dizer(self, texto, now=None, motivo=None):
+        """Fala um texto exato em voz alta (voz ligada e fora do intervalo). Devolve o texto falado ou None."""
+        if not self.ligado() or not texto:
             return None
         now = time.monotonic() if now is None else now
         if now - self._ultimo < VOZ_COOLDOWN_S:
             return None
-        texto = self._frase(motivo)
-        if not texto:
-            return None
         self._ultimo = now
         self._falar_async(texto, motivo)
         return texto
+
+    def exemplos(self, n=8):
+        """Algumas falas do pet, para o Ollama imitar o jeito dele."""
+        pasta = self.conteudo.proprio / "falas"
+        linhas = []
+        for arquivo in sorted(pasta.glob("*.txt")) if pasta.exists() else []:
+            linhas += [l.strip() for l in arquivo.read_text(encoding="utf-8").splitlines()
+                       if l.strip() and not l.lstrip().startswith("#")]
+        return random.sample(linhas, min(n, len(linhas)))
 
     def _gerar_llm(self, motivo):
         """Gera a frase pela LLM local (Ollama /api/generate); devolve None se falhar."""

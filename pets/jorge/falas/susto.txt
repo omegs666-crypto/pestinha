@@ -1,1 +1,4 @@
 ai!
+ui!
+susto de startup!
+alarme no meu funil!

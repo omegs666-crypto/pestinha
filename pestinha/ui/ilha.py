@@ -1173,6 +1173,9 @@ class Ilha(QWidget):
         self._speech.cancel()
         super().hideEvent(event)
 
+    def anunciar(self, texto, tom="calmo", origem="pet"):
+        """A ilha nativa não tem balões: a fala do pet fica só na voz (quando ligada)."""
+
     def shutdown(self):
         """Interrompe chamadas locais e aguarda workers por no máximo 750 ms."""
         self._ollama.shutdown()

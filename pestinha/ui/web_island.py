@@ -75,6 +75,10 @@ class WebIlha(QWidget):
         self.ponte.parar()
         super().hideEvent(event)
 
+    def anunciar(self, texto, tom="calmo", origem="pet"):
+        """Balão do pet no topo da ilha."""
+        self.ponte.anunciar(texto, tom, origem)
+
     def shutdown(self):
         """Para estado, narrador, áudio, Ollama e voz; chamado ao sair do app."""
         self.ponte.shutdown()

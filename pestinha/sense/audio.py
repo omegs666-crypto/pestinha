@@ -2,8 +2,11 @@
 
 Só analisa o sinal: não grava nem guarda áudio em disco. A captura roda numa QThread
 própria; a interface recebe apenas pequenos dicionários já calculados.
+Se a saída de som mudar (fone, HDMI) ou o dispositivo falhar, a thread reconecta sozinha,
+com espera crescente entre tentativas.
 """
 
+import time
 import warnings
 
 import numpy as np
@@ -14,6 +17,12 @@ QUADRO = 2_048
 BANDAS = 24
 PISO_DB = -70.0
 TETO_DB = -20.0
+SUBIDA, QUEDA = 0.55, 0.12          # o espectro sobe rápido e cai devagar (não treme)
+QUEDA_PICO = 0.02                   # por quadro, o marcador de pico desce devagar
+LIMIAR_SILENCIO = 0.002
+SILENCIO_S = 1.5
+ESPERA_MIN_S, ESPERA_MAX_S = 1.0, 10.0
+CHECA_SAIDA_S = 2.0                 # de quanto em quanto tempo confere se a saída de som trocou
 
 
 def analisar(mono, taxa=TAXA, bandas=BANDAS):
@@ -46,10 +55,40 @@ def analisar(mono, taxa=TAXA, bandas=BANDAS):
     }
 
 
+class Suavizador:
+    """Dá inércia ao espectro: sobe rápido, cai devagar, segura o pico e detecta silêncio."""
+
+    def __init__(self, bandas=BANDAS):
+        self.bandas = [0.0] * bandas
+        self.picos = [0.0] * bandas
+        self._silencio_desde = None
+
+    def aplicar(self, dados, agora):
+        alvo = dados.get("bandas") or []
+        if len(alvo) != len(self.bandas):
+            return dados
+        for i, v in enumerate(alvo):
+            self.bandas[i] += (v - self.bandas[i]) * (SUBIDA if v > self.bandas[i] else QUEDA)
+            self.picos[i] = max(self.bandas[i], self.picos[i] - QUEDA_PICO)
+        if dados.get("rms", 0.0) < LIMIAR_SILENCIO:
+            self._silencio_desde = agora if self._silencio_desde is None else self._silencio_desde
+        else:
+            self._silencio_desde = None
+        silencio = self._silencio_desde is not None and agora - self._silencio_desde >= SILENCIO_S
+        return {
+            "bandas": [round(v, 3) for v in self.bandas],
+            "picos": [round(v, 3) for v in self.picos],
+            "rms": dados.get("rms", 0.0),
+            "pico": dados.get("pico", 0.0),
+            "silencio": silencio,
+        }
+
+
 class CapturaLoopback(QThread):
-    """Lê o áudio de saída do sistema (WASAPI loopback no Windows) e emite análises."""
+    """Lê o áudio de saída do sistema (WASAPI loopback no Windows) e emite análises suavizadas."""
 
     niveis = Signal(object)
+    conectado = Signal()
     erro = Signal(str)
 
     def __init__(self, parent=None, taxa=TAXA, quadro=QUADRO, bandas=BANDAS):
@@ -57,17 +96,41 @@ class CapturaLoopback(QThread):
         self.taxa = taxa
         self.quadro = quadro
         self.bandas = bandas
+        self._suavizador = Suavizador(bandas)
 
     def run(self):
-        try:
-            import soundcard as sc
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                alto_falante = sc.default_speaker()
-                microfone = sc.get_microphone(id=str(alto_falante.name), include_loopback=True)
-                with microfone.recorder(samplerate=self.taxa, channels=2, blocksize=self.quadro) as gravador:
-                    while not self.isInterruptionRequested():
-                        quadro = gravador.record(numframes=self.quadro)
-                        self.niveis.emit(analisar(quadro.mean(axis=1), self.taxa, self.bandas))
-        except Exception as error:  # sem dispositivo de saída, driver ausente ou biblioteca faltando
-            self.erro.emit(f"Áudio do sistema indisponível: {str(error)[:160] or type(error).__name__}")
+        espera = ESPERA_MIN_S
+        while not self.isInterruptionRequested():
+            try:
+                self._capturar()
+                espera = ESPERA_MIN_S
+            except Exception as error:  # sem dispositivo de saída, driver ausente ou biblioteca faltando
+                self.erro.emit(f"Áudio do sistema indisponível: {str(error)[:160] or type(error).__name__}")
+                espera = min(espera * 2, ESPERA_MAX_S)
+            self._dormir(espera)
+
+    def _capturar(self):
+        """Captura enquanto a saída de som for a mesma; quando ela muda, volta e reconecta."""
+        import soundcard as sc
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            nome = str(sc.default_speaker().name)
+            microfone = sc.get_microphone(id=nome, include_loopback=True)
+            with microfone.recorder(samplerate=self.taxa, channels=2, blocksize=self.quadro) as gravador:
+                self.conectado.emit()
+                ultimo_check = time.monotonic()
+                while not self.isInterruptionRequested():
+                    quadro = gravador.record(numframes=self.quadro)
+                    agora = time.monotonic()
+                    self.niveis.emit(self._suavizador.aplicar(
+                        analisar(quadro.mean(axis=1), self.taxa, self.bandas), agora))
+                    if agora - ultimo_check >= CHECA_SAIDA_S:
+                        ultimo_check = agora
+                        if str(sc.default_speaker().name) != nome:
+                            return
+
+    def _dormir(self, segundos):
+        """Espera em pedaços curtos, para o fechamento não ficar preso na espera."""
+        fim = time.monotonic() + segundos
+        while not self.isInterruptionRequested() and time.monotonic() < fim:
+            time.sleep(0.1)

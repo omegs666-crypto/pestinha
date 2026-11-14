@@ -102,7 +102,16 @@
         <iframe data-src="moxen/parrilla/index.html?tema=oscuro" data-quadro="parrilla" title="Grade de widgets"></iframe>
       </section>
       <section class="vista" data-vista="fluxos">
-        <iframe data-src="moxen/eslabon/index.html?tema=oscuro" data-quadro="eslabon" title="Diagramas de interação"></iframe>
+        <div class="fluxos">
+          <div class="topo-fluxos">
+            <button type="button" class="pilula ligada" data-fluxo="reacoes">Reações do pet</button>
+            <button type="button" class="pilula" data-fluxo="livre">Diagrama livre</button>
+            <button type="button" class="pilula" id="nova-reacao">+ Nova reação</button>
+            <label class="marca" id="marca-ia"><input type="checkbox" id="ia-falas"> Falas com IA local</label>
+          </div>
+          <div class="reacoes-lista" id="lista-reacoes" data-vazia="Nenhuma reação ainda. Crie uma com + Nova reação."></div>
+          <iframe data-src="moxen/eslabon/index.html?tema=oscuro" data-quadro="eslabon" title="Diagramas livres" hidden></iframe>
+        </div>
       </section>
 
       <section class="vista" data-vista="chat">

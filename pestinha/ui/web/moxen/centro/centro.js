@@ -368,9 +368,9 @@
      arrastra, mandos y un ecualizador que sigue al volumen.
      ===================================================================== */
   const PISTAS = [
-    { t: 'Luz de fim de tarde', s: 'Sessão instrumental', dur: 214, c: ['#ffb169', '#9b63e6', '#fff1c9', '#4b2d9f'] },
+    { t: 'Luz de fim de tarde', s: 'Sessão instrumental', dur: 214, c: ['#45e6ff', '#7c6bff', '#e8ecff', '#1b1f3a'] },
     { t: 'Maré de verão', s: 'Piano e cordas', dur: 187, c: ['#7fd0ff', '#5b6df0', '#e8f6ff', '#2a2f9c'] },
-    { t: 'Brasas', s: 'Ritmos suaves', dur: 241, c: ['#ffd27a', '#ff7e5f', '#fff5d6', '#8a2f4a'] },
+    { t: 'Brasas', s: 'Ritmos suaves', dur: 241, c: ['#45e6ff', '#7c6bff', '#e8ecff', '#1b1f3a'] },
   ];
   const mmss = s => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 

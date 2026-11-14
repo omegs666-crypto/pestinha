@@ -13,6 +13,7 @@ import pytest  # noqa: E402
 from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from pestinha.mind.convivencia import Reacoes  # noqa: E402
 from pestinha.sense.audio import BANDAS, TAXA, analisar  # noqa: E402
 from pestinha.ui import web_island  # noqa: E402
 from pestinha.ui.web_bridge import Ponte  # noqa: E402
@@ -28,6 +29,8 @@ class FakeApp:
         self.paths = SimpleNamespace(memory=memoria)
         self.chamadas = []
         self.floats = SimpleNamespace(toggle=lambda chave: self.chamadas.append(chave))
+        self.reacoes = Reacoes(memoria / "reacoes.json")
+        self.reacoes.load()
 
     def toggle_pause(self):
         self.paused = not self.paused

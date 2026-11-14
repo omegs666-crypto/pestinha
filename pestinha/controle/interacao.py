@@ -39,6 +39,7 @@ class InteracaoMixin:
         self.drives.touched("poke")
         self.memory.on_interaction()
         self.cerebro2.registrar("cutucada")
+        self._reagiu(now, "cutucada")
         if self.asleep:
             self.sleep.wake(startled=True)
         # a reação NÃO é fixa: mede-se o que a rede fez com a cutucada (ver poke_reflex)
@@ -56,6 +57,7 @@ class InteracaoMixin:
         self.drives.touched("caress")
         self.memory.on_interaction()
         self.cerebro2.registrar("duplo clique (carinho)")
+        self._reagiu(now, "carinho")
         if self.asleep:
             self.sleep.wake(started=True)
 
@@ -107,6 +109,7 @@ class InteracaoMixin:
         self.drives.touched("throw")
         self.cerebro2.registrar(f"arremesso ({speed:.0f} px/s)")
         self.in_flight = True
+        self._evento("arremesso")
 
     def on_dismissed(self, thing, elapsed):
         """Você dispensou uma travessura: ela some, e o tempo até você fechar vira aprendizado (fechar rápido é pior)."""
@@ -114,6 +117,7 @@ class InteracaoMixin:
             return                                   # o objeto some, mas não vira aprendizado na pausa
         self.cerebro2.registrar(f"dispensou uma travessura depois de {elapsed:.0f} s")
         self.mischief_ctl.on_dismissed(thing, elapsed, self.prof, time.monotonic())
+        self._evento("dispensa")
 
     def arrancar_notebook(self, now):
         """Arrancaram o notebook dele: ele levanta e fica bravo ou triste, conforme o pet."""
@@ -172,6 +176,7 @@ class InteracaoMixin:
         self.drives.touched("caress")
         self.memory.on_interaction()
         self.timeline.note_interaction()
+        self._reagiu(time.monotonic(), "carinho")
 
     def menu_place_ball(self):
         """Menu: 'Pôr a bolinha' (coloca a bolinha perto do pet, no chão)."""

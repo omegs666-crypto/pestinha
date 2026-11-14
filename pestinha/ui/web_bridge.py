@@ -14,6 +14,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from .. import log as log_module
 from ..config import EMOTION_NAMES
 from ..mind.chat_voice import ChatVoice
+from ..mind.convivencia import ler_persona, prompt_fala
 from ..mind.narrador import Narrador, escolher_modelo, limpar_frase, prompt_insight
 from ..mind.ollama_local import OllamaLocal
 from ..sense.audio import CapturaLoopback
@@ -21,7 +22,10 @@ from ..sense.audio import CapturaLoopback
 PERSISTIVEIS = {"layout", "diagrama"}
 LIMITE_PERSISTENCIA = 200_000
 ESTADO_MS = 500
+LOGS_A_CADA = 4               # os logs vão junto a cada 2 s: o resto do estado é leve
 INSIGHT_MS = 120_000          # o Ollama comenta as métricas a cada 2 min com a ilha visível
+FALA_IA_MS = 75_000           # verifica se vale pedir uma fala do pet ao Ollama
+INTERVALO_FALA_IA_S = 240.0   # no mínimo 4 min entre falas de IA do pet
 PAINEIS = {"neural", "greve", "mlp"}
 LIMITE_REGIAO = 4_000
 
@@ -87,16 +91,30 @@ class Ponte(QObject):
         self._timer_insight = QTimer(self)
         self._timer_insight.setInterval(INSIGHT_MS)
         self._timer_insight.timeout.connect(self.pedir_insight)
+        # falas do pet geradas pelo Ollama local (cliente próprio, em worker)
+        self._contador = 0
+        self._pedindo_fala = False
+        self._fala_ia = ""
+        self._ultima_fala_ia = -1e9
+        self._ollama_falas = OllamaLocal(self)
+        self._ollama_falas.token.connect(self._falas_token)
+        self._ollama_falas.chat_finished.connect(self._falas_fim)
+        self._ollama_falas.error.connect(self._falas_erro)
+        self._timer_falas = QTimer(self)
+        self._timer_falas.setInterval(FALA_IA_MS)
+        self._timer_falas.timeout.connect(self.pedir_fala_ia)
 
     # ----- ciclo de vida -----
     def iniciar(self):
         self._timer.start()
         self._timer_insight.start()
+        self._timer_falas.start()
         self._emitir_estado()
 
     def parar(self):
         self._timer.stop()
         self._timer_insight.stop()
+        self._timer_falas.stop()
 
     def shutdown(self):
         """Encerra workers de rede, voz e áudio ao fechar a ilha."""
@@ -104,7 +122,45 @@ class Ponte(QObject):
         self.audio(False)
         self._ollama.shutdown()
         self._ollama_narrador.shutdown()
+        self._ollama_falas.shutdown()
         self._voz.shutdown()
+
+    # ----- falas do pet (balões) -----
+    def anunciar(self, texto, tom="calmo", origem="pet"):
+        """Um balão do pet (ou da IA dele) no topo da ilha. Não bloqueia: só emite o sinal."""
+        self.aviso.emit(json.dumps({"texto": str(texto)[:160], "tom": tom, "origem": origem}, ensure_ascii=False))
+
+    @Slot()
+    def pedir_fala_ia(self):
+        """Pede ao Ollama uma fala do pet no jeito dele, com o que ele lembra de você (worker)."""
+        app = self.app
+        if not app.reacoes.ia or self.offline or self._pedindo_fala or app.paused or not app.pet.isVisible():
+            return
+        agora = time.monotonic()
+        modelo = escolher_modelo(self._modelos, self._modelo_preferido)
+        if not modelo or agora - self._ultima_fala_ia < INTERVALO_FALA_IA_S:
+            return
+        self._pedindo_fala = True
+        self._fala_ia = ""
+        self._ultima_fala_ia = agora
+        mensagens = prompt_fala(app.nome, ler_persona(app.conteudo.proprio), self.snapshot()["emocao"].lower(),
+                                app.convivencia.fatos(), app.voz.exemplos(8))
+        self._ollama_falas.chat_stream_async(modelo, mensagens)
+
+    def _falas_token(self, pedaco):
+        self._fala_ia = (self._fala_ia + pedaco)[-2_000:]
+
+    def _falas_fim(self):
+        texto = limpar_frase(self._fala_ia)
+        self._pedindo_fala = False
+        self._fala_ia = ""
+        if texto:
+            self.app.falar_pet(texto, "calmo", "ollama")
+
+    def _falas_erro(self, mensagem):
+        self._pedindo_fala = False
+        self._fala_ia = ""
+        log_module.log(f"[falas] Ollama não respondeu ao pet: {mensagem}")
 
     # ----- janela: a página informa a área visível (o resto deixa o clique passar) -----
     @Slot(int, int, int, int)
@@ -161,7 +217,7 @@ class Ponte(QObject):
             log_module.log(f"[narrador] {mensagem}")
 
     # ----- estado do backend (somente leitura) -----
-    def snapshot(self):
+    def snapshot(self, logs=True):
         drives = getattr(self.app, "drives", None)
         estado = getattr(self.app, "pet_state", None)
         emocao = getattr(estado, "emotion", None)
@@ -180,7 +236,7 @@ class Ponte(QObject):
             "travessuras": bool(self.app.perms.get("travessuras")),
             "offline": self.offline,
             "processando": atividade >= 60 or self._treinando(),
-            "logs": [str(linha)[:300] for linha in log_module.recent(40)],
+            "logs": [str(linha)[:300] for linha in log_module.recent(40)] if logs else None,
         }
 
     def _treinando(self):
@@ -191,7 +247,8 @@ class Ponte(QObject):
 
     def _emitir_estado(self):
         try:
-            dados = self.snapshot()
+            self._contador += 1
+            dados = self.snapshot(logs=self._contador % LOGS_A_CADA == 0)
             self.estado.emit(json.dumps(dados, ensure_ascii=False))
             if self.narrador_ligado:
                 fala = self._narrador.observar(dados, time.monotonic())
@@ -233,6 +290,12 @@ class Ponte(QObject):
 
     @Slot(str, str)
     def salvar(self, nome, dados):
+        if nome == "reacoes" and isinstance(dados, str) and len(dados) <= LIMITE_PERSISTENCIA:
+            try:
+                self.app.reacoes.definir(json.loads(dados), salvar=True)
+            except ValueError:
+                log_module.log("[reações] JSON inválido recebido da interface")
+            return
         if nome not in PERSISTIVEIS or not isinstance(dados, str) or len(dados) > LIMITE_PERSISTENCIA:
             return
         try:
@@ -243,6 +306,8 @@ class Ponte(QObject):
 
     @Slot(str, result=str)
     def carregar(self, nome):
+        if nome == "reacoes":
+            return json.dumps(self.app.reacoes.exportar(), ensure_ascii=False)
         if nome not in PERSISTIVEIS:
             return ""
         try:
@@ -301,16 +366,13 @@ class Ponte(QObject):
         if ligado and self._captura is None:
             self._captura = CapturaLoopback(self)
             self._captura.niveis.connect(lambda dados: self.niveis.emit(json.dumps(dados)))
-            self._captura.erro.connect(self._audio_erro)
+            self._captura.conectado.connect(lambda: self.audio_estado.emit("ativo"))
+            self._captura.erro.connect(self.audio_estado)
             self._captura.finished.connect(lambda: self.audio_estado.emit("parado"))
             self._captura.start()
-            self.audio_estado.emit("ativo")
+            self.audio_estado.emit("conectando")
         elif not ligado and self._captura is not None:
             captura, self._captura = self._captura, None
             captura.requestInterruption()
             captura.wait(1500)
             self.audio_estado.emit("parado")
-
-    def _audio_erro(self, mensagem):
-        self.audio_estado.emit(mensagem)
-        self._captura = None

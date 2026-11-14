@@ -62,6 +62,7 @@ from .core.nervous_system import LIFBrain
 from .core.protesto import STAGE_NAMES, Protesto
 from .log import log
 from .mind.castigo_ctl import CastigoController
+from .mind.convivencia import BALAO_INTERVALO_S, EVENTOS, Convivencia, Reacoes
 from .mind.festa import FestaController
 from .mind.mesa import MesaController, pull
 from .mind.mischief_ctl import MischiefController
@@ -187,7 +188,12 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
 
         # ----- segundo cérebro (Obsidian): diário e aprendizado em Markdown -----
         self.cerebro2 = SegundoCerebro(self.perms, pet_id, self.nome)
-        self.voz = Voz(self.perms, self.conteudo, self.debugging)
+        self.convivencia = Convivencia(self.pet_paths.convivencia)      # o que ele lembra de você
+        self.convivencia.load()
+        self.reacoes = Reacoes(self.pet_paths.reacoes)                  # reações configuradas (aba Diagramas)
+        self.reacoes.load()
+        self.ultimo_balao = -1e9
+        self.voz = Voz(self.perms, self.conteudo, self.debugging, pesos=self.convivencia.peso)
         self._c2 = {"carinho": False, "preso": False, "sentado": False,
                     "dormindo": False, "fugas": self.castigo.vitorias["fugir"],
                     "emocao": None}
@@ -395,6 +401,8 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         if caressing != self._c2["carinho"]:
             self._c2["carinho"] = caressing
             self.cerebro2.registrar("começou a receber carinho" if caressing else "o carinho parou")
+            if caressing:
+                self._reagiu(now)
 
         intensities = self.senses.update(self.activity, idle, self.drives.channels(), caressing, mouse_moving)
         # condicionamento: o cursor vindo rápido para ele, ou o botão apertado em cima, antecipam
@@ -486,11 +494,14 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         self.festa.tick(now, motor, emotion, self.pet.body, self._pode_soltar_fogo(), dt)
         self._atualizar_mesa(now)
         self.memory.tick(now, self.prof["episode_ok"], self.prof["episode_window"])
+        self.convivencia.expirar(now)
+        for ramo in self.reacoes.expirar(now):
+            self._executar_ramo(ramo, now)
         st.emotion = emotion
         self.behavior.on_emotion(emotion, time.monotonic())
         if emotion != self._c2["emocao"]:
             self._c2["emocao"] = emotion
-            self.voz.falar(emotion)                    # comenta a emoção nova em voz alta
+            self._evento(emotion)                      # fala a emoção nova (balão e, se ligada, em voz)
         st.boca.passo(self.voz._falando)           # a boca mexe enquanto a Voz fala
         self._segundo_cerebro_estados()
 
@@ -577,12 +588,53 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
                 self._c2[chave] = atual
                 self.cerebro2.registrar(entrou if atual else saiu)
                 if atual:
-                    self.voz.falar(fala)
+                    self._evento(fala)
         fugas = self.castigo.vitorias["fugir"]
         if fugas != self._c2["fugas"]:
             self._c2["fugas"] = fugas
             self.cerebro2.registrar(f"fugiu do cantinho (total {fugas:.0f})")
-            self.voz.falar("fuga")
+            self._evento("fuga")
+
+    # ----- falas e reações: o pet fala no balão da ilha, com voz se ligada -----
+    def falar_pet(self, texto, tom="calmo", origem="pet", voz=False, forcar=False):
+        """Um balão do pet no topo da ilha (com intervalo entre falas, salvo `forcar`). Devolve se falou."""
+        now = time.monotonic()
+        if not texto or self.paused or self.asleep or not self.pet.isVisible():
+            return False
+        if not forcar and now - self.ultimo_balao < BALAO_INTERVALO_S:
+            return False
+        self.ultimo_balao = now
+        self.ilha.anunciar(texto, tom, origem)
+        self.convivencia.mostrou(texto, now)
+        if voz:
+            self.voz.dizer(texto, now)
+        return True
+
+    def _evento(self, motivo):
+        """Algo aconteceu com o pet: a reação que você configurou responde; senão, uma fala do motivo, com peso."""
+        now = time.monotonic()
+        if motivo in EVENTOS:
+            self.convivencia.registrar(motivo, now)
+        regra = self.reacoes.disparar(motivo, now)
+        if regra and regra["texto"]:
+            return self.falar_pet(regra["texto"], regra["tom"], voz=regra["voz"], forcar=True)
+        tom = "alerta" if motivo in ("bravo", "assustado", "preso", "protesto") else "calmo"
+        return self.falar_pet(self.voz.frase(motivo), tom, voz=True)
+
+    def _reagiu(self, now, tipo=None):
+        """Você deu atenção ao pet (cutucada, carinho): as falas recentes ganham ponto e a regra 'sim' dispara."""
+        if tipo:
+            self.convivencia.registrar(tipo, now)
+        self.convivencia.reagiu(now)
+        for ramo in self.reacoes.reagiu(now):
+            self._executar_ramo(ramo, now)
+
+    def _executar_ramo(self, ramo, now):
+        """Executa a ação de um ramo de reação (fala, voz, ou ficar feliz)."""
+        if ramo["acao"] == "carinho":
+            self.emotion.force("contente", 0.5, now, PRIORITY["carinho"])
+        if ramo["acao"] in ("falar", "falar_voz") and ramo["texto"]:
+            self.falar_pet(ramo["texto"], ramo["tom"], voz=ramo["voz"], forcar=True)
 
     def _pode_soltar_fogo(self):
         """Diz se pode soltar fogos de artifício agora (permitido, acordado e pet visível)."""

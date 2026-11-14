@@ -4,20 +4,20 @@
    acentos, --ce-tinta el texto sobre el cristal y --ce-sombra (r, g, b) el
    tono de las sombras: va hacia el fondo, no al negro. */
 :root {
-  --ce-c-base: #5a3eb0;                  /* el fondo sobre el que flotan los orbes (malva profundo) */
-  --ce-c-hondo: #34207f;
-  --ce-c-malva: #a67ff2;
-  --ce-c-cielo: #46b2f6;
-  --ce-c-naranja: #ff9658;
-  --ce-c-durazno: #ffc79b;
-  --ce-naranja: #ff9f0a;                 /* acento 1: avión, rotación, luz del brillo */
-  --ce-rosa: #ff62ad;                   /* acento 2: interruptor, datos, luz del volumen */
+  --ce-c-base: #161a2e;                  /* el fondo sobre el que flotan los orbes (malva profundo) */
+  --ce-c-hondo: #0b0d15;
+  --ce-c-malva: #7c6bff;
+  --ce-c-cielo: #45e6ff;
+  --ce-c-naranja: #2a3158;
+  --ce-c-durazno: #8ea0ff;
+  --ce-naranja: #45e6ff;                 /* acento 1: avión, rotación, luz del brillo */
+  --ce-rosa: #7c6bff;                   /* acento 2: interruptor, datos, luz del volumen */
   --ce-tinta: #ffffff;
   --ce-tinta-suave: rgba(255, 255, 255, .8);
   --ce-tinta-tenue: rgba(255, 255, 255, .76);
-  --ce-oscuro: #2a1760;                  /* la tinta sobre lo que se llena de blanco */
-  --ce-sombra: 34, 16, 92;               /* r, g, b de las sombras */
-  --ce-tinte: .2;                        /* cuánto oscurece el cristal lo que hay detrás (para el contraste) */
+  --ce-oscuro: #0b0d15;                  /* la tinta sobre lo que se llena de blanco */
+  --ce-sombra: 11, 13, 21;               /* r, g, b de las sombras */
+  --ce-tinte: .25;                        /* cuánto oscurece el cristal lo que hay detrás (para el contraste) */
   --ce-filo: rgba(255, 255, 255, .72);   /* el filo de luz de arriba */
   --ce-vidrio-a: rgba(255, 255, 255, .24);
   --ce-vidrio-b: rgba(255, 255, 255, .05);
@@ -25,13 +25,13 @@
   --ce-llena-b: rgba(255, 255, 255, .8);
   --ce-bt-blanco: #ffffff;
   --ce-bt-fondo: rgba(255, 255, 255, .17);
-  --ce-bt-tinta-on: #2a1760;
-  --ce-lin-fondo: #fff6df;
-  --ce-velo-color: #150a38;
+  --ce-bt-tinta-on: #0b0d15;
+  --ce-lin-fondo: #eef1f8;
+  --ce-velo-color: #0b0d15;
   --ce-velo-k: 1;
-  --ce-aro-acento: #ffb067;
+  --ce-aro-acento: #45e6ff;
   --ce-grano: .13;
-  --ce-a1: #ffb169; --ce-a2: #9b63e6; --ce-a3: #fff1c9; --ce-a4: #4b2d9f;   /* la carátula (cambia con la pista) */
+  --ce-a1: #45e6ff; --ce-a2: #7c6bff; --ce-a3: #e8ecff; --ce-a4: #1b1f3a;   /* la carátula (cambia con la pista) */
   --ce-curva: cubic-bezier(.22, 1, .36, 1);
   --ce-muelle: cubic-bezier(.34, 1.56, .64, 1);   /* centro.js la reemplaza por un resorte real */
   --ce-fuente: "Switzer", "General Sans", system-ui, sans-serif;
@@ -91,7 +91,7 @@ p { margin: 0; }
 /* la linterna alumbra la escena desde arriba */
 .ce-spot {
   position: absolute; left: 50%; top: -18%; width: 92%; height: 98%; transform: translateX(-50%); opacity: 0; transition: opacity .8s var(--ce-curva);
-  background: radial-gradient(closest-side, rgba(255, 244, 205, .92), rgba(255, 226, 160, .42) 52%, transparent);
+  background: radial-gradient(closest-side, rgba(214, 246, 255, .92), rgba(69, 230, 255, .40) 52%, transparent);
 }
 .ce-escena.ce-lin-on .ce-spot { opacity: 1; }
 /* el brillo de verdad: arriba de 0,7 florece una bruma clara; abajo, un velo oscuro cubre el fondo */
@@ -145,8 +145,8 @@ button.ce-t { border: 0; padding: 0; font: inherit; cursor: pointer; text-align:
 .ce-desl { --ce-r: 62px; cursor: grab; touch-action: none; outline: none; }
 .ce-desl:focus-visible { outline: 2.5px solid var(--ce-tinta); outline-offset: 4px; }
 .ce-desl.is-arrastre { cursor: grabbing; }
-.ce-desl[data-desl="brillo"] { --luz: 255, 170, 60; }
-.ce-desl[data-desl="volumen"] { --luz: 255, 98, 173; }
+.ce-desl[data-desl="brillo"] { --luz: 69, 230, 255; }
+.ce-desl[data-desl="volumen"] { --luz: 124, 107, 255; }
 .ce-llena {
   position: absolute; inset: 0; z-index: 1; border-radius: 26px 26px 0 0; transform: translate3d(0, 28%, 0); will-change: transform;
   background: linear-gradient(180deg, rgba(255, 255, 255, .96), rgba(255, 255, 255, .84) 150px, rgba(255, 255, 255, .7));
@@ -261,8 +261,8 @@ button.ce-t { border: 0; padding: 0; font: inherit; cursor: pointer; text-align:
 /* ── los mosaicos que son un botón (linterna, rotación) ────────────── */
 .ce-tb { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
 .ce-tb-on { position: absolute; inset: 0; z-index: 0; background: var(--tb-on); clip-path: circle(0% at 50% 42%); transition: clip-path .6s var(--ce-curva); }
-.ce-lin .ce-tb-on { background: linear-gradient(170deg, #fffaf0, var(--tb-on) 60%, #ffe6b0); }
-.ce-rotb .ce-tb-on { background: linear-gradient(170deg, #ffc15c, var(--tb-on) 55%, #f08a00); }
+.ce-lin .ce-tb-on { background: linear-gradient(170deg, #f4fcff, var(--tb-on) 60%, #c7f5ff); }
+.ce-rotb .ce-tb-on { background: linear-gradient(170deg, #9d91ff, var(--tb-on) 55%, #5b4bd6); }
 .ce-tb[aria-pressed="true"] .ce-tb-on { clip-path: circle(78% at 50% 42%); }
 .ce-tb-ico { position: relative; z-index: 1; width: 54px; height: 54px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; overflow: visible; transition: color .3s ease, transform .7s var(--ce-muelle); }
 .ce-tb-n { position: relative; z-index: 1; font-size: 14px; font-weight: 600; letter-spacing: -.005em; transition: color .3s ease; }

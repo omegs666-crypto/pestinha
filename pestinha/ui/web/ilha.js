@@ -282,7 +282,8 @@
     const balao = $('#balao');
     if (!item) { balaoOcupado = false; balao.classList.remove('ativo'); if (!aberta) moverPara(TAM.compacta); return; }
     balaoOcupado = true;
-    $('#balao-origem').textContent = item.origem === 'ollama' ? 'IA' : item.origem === 'voce' ? 'VOCÊ' : 'NÚCLEO';
+    $('#balao-origem').textContent = item.origem === 'ollama' ? 'IA' : item.origem === 'voce' ? 'VOCÊ'
+      : item.origem === 'pet' ? (estado.pet || 'Pestinha').toUpperCase() : 'NÚCLEO';
     $('#balao-txt').textContent = item.texto;
     balao.classList.add('ativo');
     if (!aberta) requestAnimationFrame(() => moverPara(tamanhoAtual()));
@@ -310,15 +311,18 @@
   });
 
   /* ======================= vistas e dock ======================= */
+  function carregarQuadro(quadro) {
+    if (!quadro || quadro.getAttribute('src')) return;
+    quadro.addEventListener('load', () => enviarInicio(quadro), { once: true });
+    quadro.src = quadro.dataset.src;
+  }
+
   function mostrarVista(nome) {
     vista = nome;
     $$('.dock [data-vista]').forEach(b => b.classList.toggle('ativo', b.dataset.vista === nome));
     $$('.vista').forEach(s => s.classList.toggle('ativa', s.dataset.vista === nome));
     const quadro = $(`.vista[data-vista="${nome}"] iframe`);
-    if (quadro && !quadro.getAttribute('src')) {
-      quadro.addEventListener('load', () => enviarInicio(quadro), { once: true });
-      quadro.src = quadro.dataset.src;
-    }
+    if (quadro && !quadro.hidden) carregarQuadro(quadro);
     if (nome === 'chat' && !modelos.length && ponte) ponte.listar_modelos();
     if (aberta) moverPara(tamanhoAtual());
     setTimeout(redimensionarCanvases, 60);
@@ -386,7 +390,8 @@
 
   function aplicarEstado(e) {
     const antes = estado;
-    estado = e || {};
+    estado = { ...antes, ...(e || {}) };
+    if (!e || e.logs == null) estado.logs = antes.logs || [];   // logs vêm a cada 2 s: mantém os últimos
     $('#pet-nome').textContent = estado.pet || 'Pestinha';
     $('#pet-emocao').textContent = (estado.emocao || '—').toLowerCase();
     $('#st-energia').textContent = (estado.energia ?? 0) + '%';
@@ -456,11 +461,14 @@
     historicoOnda.push(rms); historicoOnda.shift();
     const acesos = Math.round(lim(pico * 1.4, 0, 1) * 16);
     $$('i', leds).forEach((l, i) => { l.className = i < acesos ? ('on' + (i >= 13 ? ' pico' : i >= 10 ? ' quente' : '')) : ''; });
-    $('#som-titulo').textContent = rms > .004 ? 'Tocando agora' : 'Silêncio';
+    const silencio = !!d.silencio;
+    $('#som-titulo').textContent = silencio ? 'Silêncio' : 'Tocando agora';
+    $('#estudio-estado').textContent = silencio ? 'Ouvindo · sem som agora' : 'Ouvindo o áudio do sistema';
     $$('iframe[data-quadro="centro"]').forEach(f => enviar(f, { tipo: 'niveis', bandas, ativo: audioAtivo, taxa: 48000 }));
   }
 
   function aoEstadoAudio(texto) {
+    if (texto === 'conectando') { $('#estudio-estado').textContent = 'Conectando ao áudio do sistema…'; return; }
     if (texto === 'ativo' || texto === 'parado') {
       const era = audioAtivo;
       audioAtivo = texto === 'ativo';
@@ -733,16 +741,124 @@
     if (respondendo && bolhaAtual && !textoAtual) { bolhaAtual.remove(); bolhaAtual = null; }
   }
 
+  /* ======================= reações do pet (aba Diagramas) ======================= */
+  // Cada reação: gatilho -> fala inicial -> espera -> se você reagir (sim) ou não (não), fala e ação.
+  // Montado com DOM (sem innerHTML) porque o texto vem do usuário; o Python valida tudo ao salvar.
+  const reacoes = (() => {
+    const lista = $('#lista-reacoes');
+    let dados = { ia: true, regras: [], gatilhos: {}, acoes: {} };
+    let salvarT = null;
+
+    const el = (tag, classe, texto) => {
+      const e = document.createElement(tag);
+      if (classe) e.className = classe;
+      if (texto != null) e.textContent = texto;
+      return e;
+    };
+    const salvarDepois = () => { clearTimeout(salvarT); salvarT = setTimeout(enviar, 300); };
+    function enviar() {
+      if (ponte) ponte.salvar('reacoes', JSON.stringify({ ia: dados.ia, regras: dados.regras }));
+    }
+    function selecao(mapa, atual, aoMudar) {
+      const s = el('select');
+      Object.entries(mapa || {}).forEach(([k, v]) => { const o = el('option', '', v); o.value = k; o.selected = k === atual; s.appendChild(o); });
+      s.addEventListener('change', () => { aoMudar(s.value); salvarDepois(); });
+      return s;
+    }
+    function texto(valor, aoMudar, dica) {
+      const i = el('input');
+      i.type = 'text'; i.value = valor || ''; i.maxLength = 160; i.placeholder = dica;
+      i.addEventListener('input', () => { aoMudar(i.value.trim()); salvarDepois(); });
+      return i;
+    }
+    function ramo(classe, rotulo, dadosRamo) {
+      const box = el('div', `ramo ${classe}`);
+      box.appendChild(el('span', 'tag', rotulo));
+      box.appendChild(texto(dadosRamo.texto, t => { dadosRamo.texto = t; }, classe === 'sim' ? 'Fala se você reagir' : 'Fala se você não reagir'));
+      const linha = el('div', 'linha');
+      linha.appendChild(selecao(dados.acoes, dadosRamo.acao, a => { dadosRamo.acao = a; }));
+      box.appendChild(linha);
+      return box;
+    }
+    function cartao(regra) {
+      const art = el('article', 'regra' + (regra.ativa ? '' : ' desligada'));
+      const topo = el('div', 'regra-topo');
+      const ativa = el('label', 'marca');
+      const chk = el('input'); chk.type = 'checkbox'; chk.checked = !!regra.ativa;
+      chk.addEventListener('change', () => { regra.ativa = chk.checked; art.classList.toggle('desligada', !chk.checked); salvarDepois(); });
+      ativa.append(chk, ' ativa');
+      const espera = el('label', 'espera', 'espera ');
+      const seg = el('input'); seg.type = 'number'; seg.min = 5; seg.max = 120; seg.value = regra.espera;
+      seg.addEventListener('change', () => { regra.espera = lim(Number(seg.value) || 20, 5, 120); seg.value = regra.espera; salvarDepois(); });
+      espera.append(seg, ' s');
+      const remover = el('button', 'pilula remover', 'Remover');
+      remover.type = 'button';
+      remover.addEventListener('click', () => { dados.regras = dados.regras.filter(r => r !== regra); render(); salvarDepois(); });
+      topo.append(ativa, selecao(dados.gatilhos, regra.gatilho, g => { regra.gatilho = g; }), espera, remover);
+
+      const fluxo = el('div', 'fluxo');
+      const inicio = el('div', 'inicio');
+      inicio.appendChild(el('span', 'tag', 'Quando acontece'));
+      inicio.appendChild(texto(regra.texto, t => { regra.texto = t; }, 'Fala inicial (vazio = fala normal do pet)'));
+      const linha = el('div', 'linha');
+      linha.appendChild(selecao({ calmo: 'Tom calmo', alerta: 'Tom de alerta' }, regra.tom, t => { regra.tom = t; }));
+      const vozL = el('label', 'marca');
+      const vz = el('input'); vz.type = 'checkbox'; vz.checked = !!regra.voz;
+      vz.addEventListener('change', () => { regra.voz = vz.checked; salvarDepois(); });
+      vozL.append(vz, ' em voz');
+      linha.appendChild(vozL);
+      inicio.appendChild(linha);
+      const ramos = el('div', 'ramos');
+      ramos.append(ramo('sim', 'Se eu reagir', regra.sim), ramo('nao', 'Se não reagir', regra.nao));
+      fluxo.append(inicio, el('div', 'seta'), ramos);
+
+      art.append(topo, fluxo);
+      return art;
+    }
+    function render() { lista.replaceChildren(...dados.regras.map(cartao)); }
+    function nova() {
+      dados.regras.push({ id: 'r' + Date.now().toString(36), gatilho: 'bravo', ativa: true, texto: '', tom: 'calmo', voz: false,
+        espera: 20, sim: { texto: '', acao: 'carinho' }, nao: { texto: '', acao: 'falar' } });
+      render(); salvarDepois();
+      if (lista.lastElementChild) lista.lastElementChild.scrollIntoView({ block: 'nearest' });
+    }
+    function carregar(bruto) {
+      try { dados = JSON.parse(bruto); } catch (_) { return; }
+      dados.regras = Array.isArray(dados.regras) ? dados.regras : [];
+      $('#ia-falas').checked = dados.ia !== false;
+      render();
+    }
+    $('#ia-falas').addEventListener('change', e => { dados.ia = e.target.checked; salvarDepois(); });
+    $('#nova-reacao').addEventListener('click', nova);
+    return { carregar };
+  })();
+
+  function mostrarFluxo(modo) {
+    $$('[data-fluxo]').forEach(b => b.classList.toggle('ligada', b.dataset.fluxo === modo));
+    $('#lista-reacoes').hidden = modo !== 'reacoes';
+    $('#nova-reacao').hidden = modo !== 'reacoes';
+    $('#marca-ia').hidden = modo !== 'reacoes';
+    const quadro = $('[data-quadro="eslabon"]');
+    quadro.hidden = modo !== 'livre';
+    if (modo === 'livre') carregarQuadro(quadro);
+  }
+  $$('[data-fluxo]').forEach(b => b.addEventListener('click', () => mostrarFluxo(b.dataset.fluxo)));
+
   /* ======================= laço de animação ======================= */
   function redimensionarCanvases() { grafico.desenhar(); desenharSomMini(); }
   window.addEventListener('resize', redimensionarCanvases);
 
-  let ultimo = performance.now();
+  let ultimo = performance.now(), ultimoOrbe = 0;
   function quadro(t) {
     const dt = lim((t - ultimo) / 1000, 0, .05);
     ultimo = t;
     const humor = atualizarCores();
-    orbe.desenhar(humor, dt);
+    // recolhida e sem balão, o orbe anima a 30 fps: a mesma respiração, metade do trabalho
+    const ocioso = !aberta && !balaoOcupado && !respondendo && !pensandoNarrador;
+    if (!ocioso || t - ultimoOrbe >= 1000 / 30) {
+      orbe.desenhar(humor, lim((t - (ultimoOrbe || t)) / 1000, 0, .1));
+      ultimoOrbe = t;
+    }
     if (aberta && vista === 'home') { grafico.desenhar(); desenharSomMini(); }
     if (aberta && vista === 'som') estudio.desenhar(dt);
     requestAnimationFrame(quadro);
@@ -767,10 +883,12 @@
       ponte.voz_estado.connect(s => { $('#ouvir').textContent = s === 'ouvindo' ? 'Ouvindo…' : 'Falar'; });
       ponte.obter_estado(s => aplicarEstado(JSON.parse(s)));
       ponte.listar_modelos();
+      ponte.carregar('reacoes', t => reacoes.carregar(t));
       informarRegiao(mola.w, mola.h);
       setTimeout(() => falar(`Núcleo online. Estou de olho no ${estado.pet || 'Pestinha'}.`, 'sistema', 'calmo'), 900);
     });
   }
 
+  mostrarFluxo('reacoes');
   window.nucleoDebug = { abrir, mostrarVista, falar, niveis: aoReceberNiveis, audio: aoEstadoAudio };   // testes e capturas
 })();

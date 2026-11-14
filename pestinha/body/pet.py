@@ -58,6 +58,7 @@ def overlay_flags():
 class PetWindow(QWidget):
     """Janela do pet: desenha o PetState e traduz o mouse em gestos (sinais)."""
 
+    _quadro = 0                     # contador de quadros da animação (repintura a 30 fps quando parado)
     poked = Signal()
     double_clicked = Signal()       # dois cliques rápidos: carinho instantâneo
     drag_started = Signal()
@@ -128,6 +129,12 @@ class PetWindow(QWidget):
             sway = max(-35.0, min(35.0, -vx * 0.03))
             self.body.angle += (self._held_angle + sway - self.body.angle) * 0.25
 
+        # parado (no chão, sem tremer, sem andar, sem notebook): repinta a 30 fps; em movimento, a 60
+        self._quadro = self._quadro + 1
+        parado = (self.body.grounded and not self.body.held and abs(self.body.vx) < 1.0 and abs(self.body.vy) < 1.0
+                  and not st.shake and st.desk_top is None)
+        if parado and self._quadro % 2:
+            return
         self.move(int(self.body.x - CX), int(self.body.y - CY))
         self.update()
 
