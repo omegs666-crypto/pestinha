@@ -1,79 +1,627 @@
-/* Ilha em HTML: controla as abas, a expansão por hover/clique e a ponte com o backend Python.
-   O trabalho pesado (Ollama, áudio, persistência) fica em workers no lado Python. */
+/* Núcleo — motor da interface do Pestinha.
+   · Molas físicas (não curvas fixas) para abrir, recolher e alargar o balão.
+   · Orbe neural em canvas com humores: calmo, processando, pensando, alerta, som e pausado.
+   · Narrador: balões curtos vindos das regras locais e do Ollama (pela ponte).
+   · Cards no estilo widgets: arrastáveis com inércia, inclinação 3D e brilho que segue o cursor.
+   Tudo o que é pesado (Ollama, áudio, persistência) roda em threads do lado Python. */
 (function () {
   'use strict';
 
   const $ = (s, r = document) => r.querySelector(s);
-  const ilha = $('#ilha');
-  const ESPERA_RECOLHER_MS = 700;
-  const MAX_HISTORICO = 20;
-  const MAX_CONTEXTO_LOGS = 12;
-  const PROMPT_SISTEMA = 'Você é o assistente técnico deste dashboard. Analise os seguintes dados do sistema e dê um diagnóstico rápido: ';
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const lim = (v, a, b) => Math.max(a, Math.min(b, v));
+  const DPR = () => window.devicePixelRatio || 1;
+  // o bitmap acompanha largura E altura do elemento; senão o desenho estica (orbes viram elipses)
+  const ajustarCanvas = (c, w, h) => {
+    const bw = Math.round(w * DPR()), bh = Math.round(h * DPR());
+    if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
+  };
+  const nucleo = $('#nucleo');
 
-  let ponte = null, estado = {}, aberta = false, fixada = false, timerSair = null, timerTroca = null;
+  const TAM = {
+    compacta: { w: 380, h: 46, r: 23 },
+    home: { w: 1000, h: 400, r: 30 },
+    grande: { w: 1000, h: 594, r: 30 },
+  };
+  const VISTAS_GRANDES = new Set(['som', 'painel', 'grade', 'fluxos', 'chat']);
+  const HUMORES = {
+    calmo: ['#45e6ff', '#7c6bff'],
+    processando: ['#4dffb0', '#45a3ff'],
+    pensando: ['#b07bff', '#ff6bd6'],
+    alerta: ['#ffb547', '#ff5a6e'],
+    pausado: ['#8a90a6', '#4b5066'],
+  };
+  const PROMPT_ANALISE = 'Você é o assistente técnico deste dashboard. Analise os seguintes dados do sistema e dê um diagnóstico rápido: ';
+  const MAX_HISTORICO = 20;
+
+  let ponte = null;
+  let estado = {};
+  let aberta = false, fixada = false, vista = 'home';
+  let timerAbrir = null, timerFechar = null;
   let audioAtivo = false, bandas = new Array(24).fill(0), rms = 0, pico = 0;
+  let pensandoNarrador = false, alertaAte = 0;
   let historico = [], modelos = [], respondendo = false, bolhaAtual = null, textoAtual = '';
 
-  // ----- expansão -----
-  function definirAberta(valor) {
-    if (valor === aberta) return;
-    aberta = valor;
-    clearTimeout(timerTroca);
-    if (valor) {
-      ilha.dataset.estado = 'aberta';
-    } else {
-      timerTroca = setTimeout(() => { ilha.dataset.estado = 'compacta'; }, 280);
-    }
-    if (ponte) ponte.expandir(valor);
+  /* ======================= mola física do corpo ======================= */
+  const mola = { w: TAM.compacta.w, h: TAM.compacta.h, r: TAM.compacta.r, vw: 0, vh: 0, vr: 0, alvo: { ...TAM.compacta }, rodando: false };
+
+  function aplicarForma() {
+    nucleo.style.width = mola.w.toFixed(1) + 'px';
+    nucleo.style.height = mola.h.toFixed(1) + 'px';
+    nucleo.style.borderRadius = mola.r.toFixed(1) + 'px';
   }
 
-  $('#compacta').addEventListener('mouseenter', () => { clearTimeout(timerSair); definirAberta(true); });
-  $('#compacta').addEventListener('click', () => definirAberta(true));
-  ilha.addEventListener('mouseenter', () => clearTimeout(timerSair));
-  ilha.addEventListener('mouseleave', () => {
-    if (fixada || !aberta) return;
-    clearTimeout(timerSair);
-    timerSair = setTimeout(() => definirAberta(false), ESPERA_RECOLHER_MS);
-  });
-  $('#fixar').addEventListener('click', () => {
-    fixada = !fixada;
-    $('#fixar').classList.toggle('ativo', fixada);
-  });
-  $('#fechar').addEventListener('click', () => { fixada = false; definirAberta(false); });
+  function informarRegiao(w, h) {
+    if (!ponte) return;
+    const margem = 18, largura = document.documentElement.clientWidth;
+    const x = (largura - w) / 2 - margem;
+    ponte.definir_regiao(Math.round(x), 0, Math.round(w + margem * 2), Math.round(h + 6 + margem * 2));
+  }
 
-  // ----- abas e quadros (Moxen carregam só quando abertos) -----
-  function ativarAba(nome) {
-    document.querySelectorAll('[data-aba]').forEach(b => b.classList.toggle('ativa', b.dataset.aba === nome));
-    document.querySelectorAll('[data-secao]').forEach(s => s.classList.toggle('oculta', s.dataset.secao !== nome));
-    const quadro = document.querySelector(`[data-secao="${nome}"] iframe`);
-    if (quadro && !quadro.src) {
+  function moverPara(alvo) {
+    mola.alvo = { ...alvo };
+    informarRegiao(Math.max(mola.w, alvo.w), Math.max(mola.h, alvo.h));   // cobre a forma durante o movimento
+    if (!mola.rodando) { mola.rodando = true; requestAnimationFrame(passoMola); }
+  }
+
+  let ultimoMola = 0;
+  function passoMola(t) {
+    const dt = lim((t - (ultimoMola || t)) / 1000, 0, 1 / 30) || 1 / 60;
+    ultimoMola = t;
+    const abrindo = mola.alvo.h > TAM.compacta.h;
+    const K = abrindo ? 230 : 300, C = abrindo ? 21 : 28;   // abrir balança um pouco; fechar é mais firme
+    let parado = true;
+    for (let s = 0; s < 4; s++) {
+      for (const p of ['w', 'h', 'r']) {
+        const v = 'v' + p;
+        const a = -K * (mola[p] - mola.alvo[p]) - C * mola[v];
+        mola[v] += a * dt / 4;
+        mola[p] += mola[v] * dt / 4;
+      }
+    }
+    for (const p of ['w', 'h', 'r']) {
+      if (Math.abs(mola[p] - mola.alvo[p]) > .4 || Math.abs(mola['v' + p]) > .4) parado = false;
+    }
+    if (parado) {
+      Object.assign(mola, mola.alvo, { vw: 0, vh: 0, vr: 0 });
+      mola.rodando = false; ultimoMola = 0;
+      aplicarForma();
+      informarRegiao(mola.w, mola.h);
+      return;
+    }
+    aplicarForma();
+    requestAnimationFrame(passoMola);
+  }
+
+  function tamanhoAtual() {
+    if (aberta) return VISTAS_GRANDES.has(vista) ? TAM.grande : TAM.home;
+    const balao = $('#balao');
+    if (balao.classList.contains('ativo')) {
+      const extra = Math.min(560, balao.scrollWidth + 22);   // largura real do texto, mesmo durante a transição
+      return { ...TAM.compacta, w: TAM.compacta.w + extra };
+    }
+    return TAM.compacta;
+  }
+
+  function abrir(valor) {
+    if (valor === aberta) return;
+    aberta = valor;
+    nucleo.classList.toggle('aberto', valor);
+    moverPara(tamanhoAtual());
+    if (valor) setTimeout(redimensionarCanvases, 60);
+  }
+
+  // hover abre com um pequeno atraso; sair recolhe, a não ser que esteja fixada ou digitando
+  nucleo.addEventListener('mouseenter', () => {
+    clearTimeout(timerFechar);
+    if (!aberta) timerAbrir = setTimeout(() => abrir(true), 260);
+  });
+  nucleo.addEventListener('mouseleave', () => {
+    clearTimeout(timerAbrir);
+    if (!aberta || fixada || document.activeElement === $('#entrada') || respondendo) return;
+    timerFechar = setTimeout(() => abrir(false), 750);
+  });
+  $('#orbe').addEventListener('click', () => { orbe.explodir(); abrir(!aberta); });
+  $('#fixar').addEventListener('click', () => { fixada = !fixada; $('#fixar').classList.toggle('ligado', fixada); });
+  $('#recolher').addEventListener('click', () => { fixada = false; $('#fixar').classList.remove('ligado'); abrir(false); });
+
+  /* ======================= relógio ======================= */
+  function relogio() {
+    const d = new Date();
+    $('#hora').textContent = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    $('#data').textContent = d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
+      .replace(/\./g, '').toUpperCase();
+  }
+  setInterval(relogio, 1000);
+  relogio();
+
+  /* ======================= cores vivas ======================= */
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const cor = { a1: hex(HUMORES.calmo[0]), a2: hex(HUMORES.calmo[1]) };
+
+  function hslParaRgb(h, s, l) {
+    s /= 100; l /= 100;
+    const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [255 * f(0), 255 * f(8), 255 * f(4)];
+  }
+
+  function humorAtual() {
+    if (performance.now() < alertaAte) return 'alerta';
+    if (respondendo || pensandoNarrador) return 'pensando';
+    if (estado.processando) return 'processando';
+    if (audioAtivo && rms > .004) return 'som';
+    if (estado.pausado) return 'pausado';
+    return 'calmo';
+  }
+
+  function alvoDeCor(humor) {
+    if (humor !== 'som') return HUMORES[humor].map(hex);
+    // a cor do som: graves puxam para violeta/âmbar, agudos para ciano
+    let soma = 0, peso = 0;
+    bandas.forEach((v, i) => { soma += v * i; peso += v; });
+    const centro = peso ? soma / peso / (bandas.length - 1) : .5;
+    const h = 300 - centro * 130;
+    return [hslParaRgb(h, 95, 62), hslParaRgb((h + 55) % 360, 90, 60)];
+  }
+
+  function atualizarCores() {
+    const humor = humorAtual();
+    nucleo.dataset.humor = humor;
+    const [b1, b2] = alvoDeCor(humor);
+    for (let i = 0; i < 3; i++) {
+      cor.a1[i] += (b1[i] - cor.a1[i]) * .06;
+      cor.a2[i] += (b2[i] - cor.a2[i]) * .06;
+    }
+    const css = c => `rgb(${c.map(Math.round).join(',')})`;
+    document.documentElement.style.setProperty('--a1', css(cor.a1));
+    document.documentElement.style.setProperty('--a2', css(cor.a2));
+    document.documentElement.style.setProperty('--giro-s',
+      humor === 'pensando' ? '2.4s' : humor === 'processando' ? '3.4s' : humor === 'som' ? (4.5 - rms * 30).toFixed(2) + 's' : '9s');
+    return humor;
+  }
+
+  /* ======================= orbe neural ======================= */
+  const orbe = (() => {
+    const c = $('#orbe'), ctx = c.getContext('2d');
+    const S = 40;
+    let ondas = [], fase = 0, ponteiro = null, energia = 0;
+    const particulas = Array.from({ length: 14 }, (_, i) => ({ a: i / 14 * Math.PI * 2, r: 13 + (i % 3) * 2.5, v: .6 + (i % 4) * .2 }));
+    c.width = S * DPR(); c.height = S * DPR();
+    c.addEventListener('mousemove', e => { const b = c.getBoundingClientRect(); ponteiro = { x: e.clientX - b.left - S / 2, y: e.clientY - b.top - S / 2 }; });
+    c.addEventListener('mouseleave', () => { ponteiro = null; });
+
+    const PARAM = {
+      calmo: { vel: .7, amp: .06, part: 6, onda: 0 },
+      processando: { vel: 2.6, amp: .10, part: 14, onda: .9 },
+      pensando: { vel: 1.7, amp: .16, part: 10, onda: .35 },
+      alerta: { vel: 3.4, amp: .12, part: 8, onda: 1.8 },
+      som: { vel: 1.4, amp: .05, part: 12, onda: 0 },
+      pausado: { vel: .25, amp: .03, part: 3, onda: 0 },
+    };
+
+    function explodir() { for (let i = 0; i < 3; i++) ondas.push({ r: 10 + i * 3, a: .9 }); }
+
+    function desenhar(humor, dt) {
+      const p = PARAM[humor] || PARAM.calmo;
+      fase += dt * p.vel;
+      energia += ((humor === 'som' ? rms * 18 : 0) - energia) * .2;
+      if (p.onda && Math.random() < p.onda * dt) ondas.push({ r: 11, a: .8 });
+      if (humor === 'som' && pico > .35 && Math.random() < .3) ondas.push({ r: 11, a: .6 });
+      ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+      ctx.clearRect(0, 0, S, S);
+      ctx.translate(S / 2, S / 2);
+      const c1 = `rgb(${cor.a1.map(Math.round)})`, c2 = `rgb(${cor.a2.map(Math.round)})`;
+
+      // halo
+      const halo = ctx.createRadialGradient(0, 0, 4, 0, 0, 20);
+      halo.addColorStop(0, c1.replace('rgb', 'rgba').replace(')', ',.35)'));
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2); ctx.fill();
+
+      // ondas de energia
+      ondas = ondas.filter(o => o.a > .02 && o.r < 18.5);   // nunca passa da borda do canvas
+      ondas.forEach(o => {
+        o.r += dt * 22; o.a *= Math.pow(.12, dt);
+        const alfa = o.a * Math.max(0, 1 - o.r / 18.5);
+        ctx.strokeStyle = c1.replace('rgb', 'rgba').replace(')', `,${alfa.toFixed(3)})`);
+        ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(0, 0, o.r, 0, Math.PI * 2); ctx.stroke();
+      });
+
+      // corpo: uma bolha que respira e se inclina para o cursor
+      const respira = 1 + Math.sin(fase * 1.3) * (humor === 'calmo' || humor === 'pausado' ? .06 : .03) + energia * .12;
+      const R = 9.5 * respira;
+      ctx.beginPath();
+      for (let i = 0; i <= 48; i++) {
+        const t = i / 48 * Math.PI * 2;
+        let r = R * (1 + p.amp * Math.sin(3 * t + fase * 2.1) + p.amp * .7 * Math.sin(5 * t - fase * 1.7)
+          + (humor === 'som' ? (bandas[Math.floor(i / 48 * bandas.length) % bandas.length] || 0) * .28 : 0));
+        if (ponteiro) {
+          const ang = Math.atan2(ponteiro.y, ponteiro.x);
+          r += Math.max(0, Math.cos(t - ang)) * 2.4;
+        }
+        const x = Math.cos(t) * r, y = Math.sin(t) * r;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      const g = ctx.createRadialGradient(-3, -4, 1, 0, 0, R * 1.4);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(.25, c1); g.addColorStop(1, c2);
+      ctx.fillStyle = g; ctx.shadowColor = c1; ctx.shadowBlur = 10; ctx.fill(); ctx.shadowBlur = 0;
+
+      // pensando: um anel tracejado girando como raciocínio
+      if (humor === 'pensando') {
+        ctx.save(); ctx.rotate(fase * 2); ctx.setLineDash([3, 4]);
+        ctx.strokeStyle = c2; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(0, 0, R + 5, 0, Math.PI * 1.4); ctx.stroke();
+        ctx.restore();
+      }
+      // partículas orbitando
+      particulas.slice(0, p.part).forEach(q => {
+        q.a += dt * q.v * p.vel;
+        const rr = q.r + Math.sin(fase + q.a * 3) * 1.2;
+        ctx.fillStyle = c1;
+        ctx.globalAlpha = .55; ctx.beginPath(); ctx.arc(Math.cos(q.a) * rr, Math.sin(q.a) * rr * .8, .9, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+    return { desenhar, explodir };
+  })();
+
+  /* ======================= balões do narrador ======================= */
+  const filaBalao = [];
+  let balaoOcupado = false;
+
+  function falar(texto, origem, tom) {
+    if (!texto) return;
+    filaBalao.push({ texto, origem, tom });
+    adicionarFala(texto, origem);
+    if (tom === 'alerta') alertaAte = performance.now() + 3500;
+    if (!balaoOcupado) proximoBalao();
+  }
+
+  function proximoBalao() {
+    const item = filaBalao.shift();
+    const balao = $('#balao');
+    if (!item) { balaoOcupado = false; balao.classList.remove('ativo'); if (!aberta) moverPara(TAM.compacta); return; }
+    balaoOcupado = true;
+    $('#balao-origem').textContent = item.origem === 'ollama' ? 'IA' : item.origem === 'voce' ? 'VOCÊ' : 'NÚCLEO';
+    $('#balao-txt').textContent = item.texto;
+    balao.classList.add('ativo');
+    if (!aberta) requestAnimationFrame(() => moverPara(tamanhoAtual()));
+    orbe.explodir();
+    setTimeout(proximoBalao, lim(item.texto.length * 70, 3800, 8000));
+  }
+
+  function adicionarFala(texto, origem) {
+    const lista = $('#falas');
+    const li = document.createElement('li');
+    li.textContent = texto;
+    const s = document.createElement('small');
+    s.textContent = (origem === 'ollama' ? 'IA local · ' : '') + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    li.appendChild(s);
+    lista.prepend(li);
+    while (lista.children.length > 4) lista.lastChild.remove();
+  }
+
+  $('#narrar').addEventListener('click', () => { if (ponte) ponte.pedir_insight(); });
+  $('#narrador-liga').addEventListener('click', e => {
+    const ligado = !e.currentTarget.classList.contains('ligada');
+    e.currentTarget.classList.toggle('ligada', ligado);
+    e.currentTarget.textContent = ligado ? 'Narrador ligado' : 'Narrador mudo';
+    if (ponte) ponte.ligar_narrador(ligado);
+  });
+
+  /* ======================= vistas e dock ======================= */
+  function mostrarVista(nome) {
+    vista = nome;
+    $$('.dock [data-vista]').forEach(b => b.classList.toggle('ativo', b.dataset.vista === nome));
+    $$('.vista').forEach(s => s.classList.toggle('ativa', s.dataset.vista === nome));
+    const quadro = $(`.vista[data-vista="${nome}"] iframe`);
+    if (quadro && !quadro.getAttribute('src')) {
       quadro.addEventListener('load', () => enviarInicio(quadro), { once: true });
       quadro.src = quadro.dataset.src;
     }
     if (nome === 'chat' && !modelos.length && ponte) ponte.listar_modelos();
-    if (nome === 'musica') desenharEspectro();
+    if (aberta) moverPara(tamanhoAtual());
+    setTimeout(redimensionarCanvases, 60);
   }
-  document.querySelectorAll('[data-aba]').forEach(b => b.addEventListener('click', () => ativarAba(b.dataset.aba)));
 
-  function enviar(quadro, dados) {
-    if (quadro && quadro.contentWindow) quadro.contentWindow.postMessage(dados, '*');
+  const dock = $('#dock');
+  $$('.dock [data-vista]').forEach(b => b.addEventListener('click', () => mostrarVista(b.dataset.vista)));
+  $$('.dock [data-painel]').forEach(b => b.addEventListener('click', () => { if (ponte) ponte.painel(b.dataset.painel); }));
+  // efeito lupa: os ícones crescem conforme o cursor se aproxima
+  dock.addEventListener('mousemove', e => {
+    $$('button', dock).forEach(b => {
+      const r = b.getBoundingClientRect();
+      const d = Math.abs(e.clientX - (r.left + r.width / 2));
+      b.style.transform = `scale(${(1 + Math.max(0, 1 - d / 90) * .38).toFixed(3)})`;
+    });
+  });
+  dock.addEventListener('mouseleave', () => $$('button', dock).forEach(b => { b.style.transform = ''; }));
+
+  /* ======================= cards interativos ======================= */
+  $$('.card').forEach(card => {
+    card.addEventListener('pointermove', e => {
+      const r = card.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      card.style.setProperty('--mx', (x * 100).toFixed(1) + '%');
+      card.style.setProperty('--my', (y * 100).toFixed(1) + '%');
+      if (!trilho.classList.contains('arrastando')) {
+        card.style.transform = `perspective(700px) rotateX(${((.5 - y) * 7).toFixed(2)}deg) rotateY(${((x - .5) * 9).toFixed(2)}deg) translateY(-2px)`;
+      }
+    });
+    card.addEventListener('pointerleave', () => { card.style.transform = ''; });
+  });
+
+  // trilho: arrastar para os lados com inércia (como widgets de celular)
+  const trilho = $('#trilho');
+  let arrasto = null;
+  trilho.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    arrasto = { x: e.clientX, s: trilho.scrollLeft, v: 0, t: performance.now(), ultimoX: e.clientX, moveu: false };
+  });
+  window.addEventListener('pointermove', e => {
+    if (!arrasto) return;
+    const dx = e.clientX - arrasto.x;
+    if (Math.abs(dx) > 4) { arrasto.moveu = true; trilho.classList.add('arrastando'); }
+    const agora = performance.now();
+    arrasto.v = (arrasto.ultimoX - e.clientX) / Math.max(1, agora - arrasto.t);
+    arrasto.t = agora; arrasto.ultimoX = e.clientX;
+    trilho.scrollLeft = arrasto.s - dx;
+  });
+  window.addEventListener('pointerup', () => {
+    if (!arrasto) return;
+    let v = arrasto.v * 16;
+    arrasto = null;
+    const inercia = () => {
+      if (Math.abs(v) < .4) { trilho.classList.remove('arrastando'); return; }
+      trilho.scrollLeft += v; v *= .93;
+      requestAnimationFrame(inercia);
+    };
+    inercia();
+  });
+  trilho.addEventListener('wheel', e => { trilho.scrollLeft += e.deltaY + e.deltaX; e.preventDefault(); }, { passive: false });
+
+  /* ======================= card do pet ======================= */
+  $('#bt-pausa').addEventListener('click', () => { if (ponte) ponte.acao('pausa', true); });
+  $('#bt-voz').addEventListener('click', () => { if (ponte) ponte.acao('voz', true); });
+
+  function aplicarEstado(e) {
+    const antes = estado;
+    estado = e || {};
+    $('#pet-nome').textContent = estado.pet || 'Pestinha';
+    $('#pet-emocao').textContent = (estado.emocao || '—').toLowerCase();
+    $('#st-energia').textContent = (estado.energia ?? 0) + '%';
+    $('#st-estimulo').textContent = (estado.estimulacao ?? 0) + '%';
+    $('#st-insatisfacao').textContent = (estado.insatisfacao ?? 0) + '%';
+    $('#anel-energia').style.strokeDashoffset = (163.4 * (1 - (estado.energia ?? 0) / 100)).toFixed(1);
+    $('#bt-pausa').textContent = estado.pausado ? 'Retomar' : 'Pausar';
+    $('#bt-voz').classList.toggle('ligada', !!estado.voz);
+    grafico.empurrar(estado);
+    enviarMetricas();
+    if (antes.offline !== estado.offline && estado.offline) falar('Modo avião: o chat local ficou desligado.', 'sistema', 'calmo');
   }
+
+  /* ======================= gráfico em tempo real ======================= */
+  const grafico = (() => {
+    const c = $('#grafico'), ctx = c.getContext('2d');
+    const series = { energia: [], estimulacao: [], atividade: [] };
+    const CORES = { energia: '#45e6ff', estimulacao: '#b07bff', atividade: '#4dffb0' };
+    function empurrar(e) {
+      for (const k in series) { series[k].push(Number(e[k]) || 0); if (series[k].length > 120) series[k].shift(); }
+    }
+    function desenhar() {
+      const w = c.clientWidth, h = c.clientHeight;
+      if (!w || !h) return;
+      ajustarCanvas(c, w, h);
+      ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+      for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(0, h * i / 4); ctx.lineTo(w, h * i / 4); ctx.stroke(); }
+      for (const k in series) {
+        const s = series[k];
+        if (s.length < 2) continue;
+        ctx.beginPath();
+        // a amostra mais nova fica sempre na borda direita; o histórico corre para a esquerda
+        s.forEach((v, i) => { const x = w - (s.length - 1 - i) / 119 * w, y = h - 4 - v / 100 * (h - 8); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+        ctx.strokeStyle = CORES[k]; ctx.lineWidth = 2; ctx.shadowColor = CORES[k]; ctx.shadowBlur = 8; ctx.stroke(); ctx.shadowBlur = 0;
+      }
+    }
+    return { empurrar, desenhar };
+  })();
+
+  /* ======================= som: card mini e estúdio ======================= */
+  const ICONE_PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.2-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></svg>';
+  const ICONE_PAUSA = '<svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.4" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.4" fill="currentColor"/></svg>';
+  const leds = $('#leds');
+  for (let i = 0; i < 16; i++) leds.appendChild(document.createElement('i'));
+  const historicoOnda = new Array(220).fill(0);
+  let marcas = [];
+
+  function alternarAudio() { if (ponte) ponte.audio(!audioAtivo); }
+  $('#som-play').addEventListener('click', alternarAudio);
+  $('#estudio-audio').addEventListener('click', alternarAudio);
+  $('#estudio-limpar').addEventListener('click', () => { marcas = []; });
+
+  function atualizarBotoesSom() {
+    $('#som-play').innerHTML = audioAtivo ? ICONE_PAUSA : ICONE_PLAY;
+    $('#estudio-audio').textContent = audioAtivo ? 'Parar' : 'Ouvir';
+    $('#som-titulo').textContent = audioAtivo ? (rms > .004 ? 'Tocando agora' : 'Silêncio') : 'Silêncio';
+    $('#som-sub').textContent = audioAtivo ? 'Loopback do sistema · 48 kHz' : 'Toque para ouvir o que sai do PC';
+  }
+  atualizarBotoesSom();
+
+  function aoReceberNiveis(d) {
+    bandas = Array.isArray(d.bandas) ? d.bandas : bandas;
+    rms = Number(d.rms) || 0;
+    pico = Number(d.pico) || 0;
+    historicoOnda.push(rms); historicoOnda.shift();
+    const acesos = Math.round(lim(pico * 1.4, 0, 1) * 16);
+    $$('i', leds).forEach((l, i) => { l.className = i < acesos ? ('on' + (i >= 13 ? ' pico' : i >= 10 ? ' quente' : '')) : ''; });
+    $('#som-titulo').textContent = rms > .004 ? 'Tocando agora' : 'Silêncio';
+    $$('iframe[data-quadro="centro"]').forEach(f => enviar(f, { tipo: 'niveis', bandas, ativo: audioAtivo, taxa: 48000 }));
+  }
+
+  function aoEstadoAudio(texto) {
+    if (texto === 'ativo' || texto === 'parado') {
+      const era = audioAtivo;
+      audioAtivo = texto === 'ativo';
+      if (!audioAtivo) { bandas = bandas.map(() => 0); rms = 0; pico = 0; }
+      $('#estudio-estado').textContent = audioAtivo ? 'Ouvindo o áudio do sistema' : 'Captura parada';
+      if (audioAtivo && !era) falar('Ouvindo o som do PC. A cor segue a música.', 'sistema', 'calmo');
+    } else {
+      audioAtivo = false;
+      $('#estudio-estado').textContent = texto;
+      falar(texto, 'sistema', 'alerta');
+    }
+    atualizarBotoesSom();
+  }
+
+  function desenharSomMini() {
+    const c = $('#som-mini'), ctx = c.getContext('2d');
+    const w = c.clientWidth, h = c.clientHeight;
+    if (!w || !h) return;
+    ajustarCanvas(c, w, h);
+    ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+    const c1 = `rgb(${cor.a1.map(Math.round)})`, c2 = `rgb(${cor.a2.map(Math.round)})`;
+    const fundo = ctx.createLinearGradient(0, 0, w, h);
+    fundo.addColorStop(0, c2); fundo.addColorStop(1, '#07080d');
+    ctx.fillStyle = fundo; ctx.fillRect(0, 0, w, h);
+    // sol que respira com o nível
+    const r = 38 + rms * 260;
+    const sol = ctx.createRadialGradient(w * .72, h * .32, 4, w * .72, h * .32, r);
+    sol.addColorStop(0, 'rgba(255,255,255,.85)'); sol.addColorStop(.35, c1); sol.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sol; ctx.fillRect(0, 0, w, h);
+    // onda que flui da direita para a esquerda
+    const meio = h * .62, n = historicoOnda.length;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * w, a = Math.min(1, historicoOnda[i] * 9) * h * .26 + 1.5;
+      ctx.lineTo(x, meio - a);
+    }
+    for (let i = n - 1; i >= 0; i--) {
+      const x = i / (n - 1) * w, a = Math.min(1, historicoOnda[i] * 9) * h * .26 + 1.5;
+      ctx.lineTo(x, meio + a);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fill();
+  }
+
+  // estúdio: espectro radial + fita de onda + campo que reage ao mouse + marcas
+  const estudio = (() => {
+    const c = $('#estudio'), ctx = c.getContext('2d');
+    let mouse = null, giro = 0;
+    c.addEventListener('mousemove', e => { const b = c.getBoundingClientRect(); mouse = { x: e.clientX - b.left, y: e.clientY - b.top }; });
+    c.addEventListener('mouseleave', () => { mouse = null; });
+    c.addEventListener('click', marcar);
+    document.addEventListener('keydown', e => {
+      if (vista === 'som' && aberta && (e.key === 'm' || e.key === 'M') && document.activeElement.tagName !== 'TEXTAREA') marcar();
+    });
+    function marcar() {
+      marcas.push({ idade: 0 });
+      if (marcas.length > 12) marcas.shift();
+      orbe.explodir();
+    }
+    function desenhar(dt) {
+      const w = c.clientWidth, h = c.clientHeight;
+      if (!w || !h) return;
+      ajustarCanvas(c, w, h);
+      ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+      const c1 = `rgb(${cor.a1.map(Math.round)})`, c2 = `rgb(${cor.a2.map(Math.round)})`;
+      ctx.fillStyle = 'rgba(7,8,13,.35)'; ctx.fillRect(0, 0, w, h);   // rastro: cada quadro apaga só um pouco
+      giro += dt * (.15 + rms * 4);
+      const cx = w / 2, cy = h * .42, base = Math.min(w, h) * .13;
+      // campo de pontos que se afasta do mouse
+      ctx.fillStyle = 'rgba(255,255,255,.08)';
+      for (let gx = 20; gx < w; gx += 34) {
+        for (let gy = 20; gy < h; gy += 34) {
+          let x = gx, y = gy;
+          if (mouse) {
+            const dx = gx - mouse.x, dy = gy - mouse.y, d = Math.hypot(dx, dy);
+            if (d < 120) { const f = (1 - d / 120) * 18; x += dx / (d || 1) * f; y += dy / (d || 1) * f; }
+          }
+          ctx.fillRect(x, y, 1.6, 1.6);
+        }
+      }
+      // espectro radial espelhado
+      const n = bandas.length;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < n * 2; i++) {
+        const v = bandas[i < n ? i : n * 2 - 1 - i] || 0;
+        const a = giro + i / (n * 2) * Math.PI * 2;
+        const r1 = base, r2 = base + 6 + v * base * 1.05;
+        ctx.strokeStyle = i % 2 ? c1 : c2;
+        ctx.lineWidth = 4;
+        ctx.globalAlpha = .35 + v * .65;
+        ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      const nucleoG = ctx.createRadialGradient(cx, cy, 2, cx, cy, base * (.9 + rms * 4));
+      nucleoG.addColorStop(0, '#fff'); nucleoG.addColorStop(.3, c1); nucleoG.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = nucleoG; ctx.beginPath(); ctx.arc(cx, cy, base * (.9 + rms * 4), 0, Math.PI * 2); ctx.fill();
+      // fita de onda no rodapé
+      const y0 = h * .86, nn = historicoOnda.length;
+      ctx.beginPath();
+      historicoOnda.forEach((v, i) => { const x = i / (nn - 1) * w, a = Math.min(1, v * 9) * h * .09 + 1; ctx.lineTo(x, y0 - a); });
+      for (let i = nn - 1; i >= 0; i--) { const x = i / (nn - 1) * w, a = Math.min(1, historicoOnda[i] * 9) * h * .09 + 1; ctx.lineTo(x, y0 + a); }
+      ctx.closePath(); ctx.fillStyle = c1; ctx.globalAlpha = .55; ctx.fill(); ctx.globalAlpha = 1;
+      // marcas viajam junto com a fita (da direita para a esquerda)
+      marcas.forEach(m => {
+        m.idade += dt;
+        const x = w - m.idade * (w / (nn / 21));
+        if (x < 0) return;
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(x, y0 - h * .12); ctx.lineTo(x, y0 + h * .12); ctx.stroke();
+        ctx.fillStyle = c2; ctx.beginPath(); ctx.arc(x, y0 - h * .12, 4, 0, Math.PI * 2); ctx.fill();
+      });
+      marcas = marcas.filter(m => w - m.idade * (w / (nn / 21)) > -10);
+    }
+    return { desenhar };
+  })();
+
+  /* ======================= foco (pomodoro) ======================= */
+  let focoTotal = 25 * 60, focoResta = focoTotal, focoRodando = false, focoTimer = null;
+  const fmt = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  function pintarFoco() {
+    $('#foco-tempo').textContent = fmt(focoResta);
+    $('#foco-sub').textContent = focoRodando ? 'Focando' : focoResta === focoTotal ? 'Pronto' : 'Pausado';
+    $('#foco-play').innerHTML = focoRodando ? ICONE_PAUSA : ICONE_PLAY;
+  }
+  $('#foco-play').addEventListener('click', () => {
+    focoRodando = !focoRodando;
+    clearInterval(focoTimer);
+    if (focoRodando) {
+      falar(`Foco de ${Math.round(focoTotal / 60)} minutos. Eu seguro as pontas.`, 'sistema', 'calmo');
+      focoTimer = setInterval(() => {
+        focoResta = Math.max(0, focoResta - 1);
+        if (!focoResta) {
+          focoRodando = false; clearInterval(focoTimer); focoResta = focoTotal;
+          falar('Foco concluído! Que tal uma pausa de 5 minutos?', 'sistema', 'alerta');
+        }
+        pintarFoco();
+      }, 1000);
+    }
+    pintarFoco();
+  });
+  const ajustarFoco = d => { if (focoRodando) return; focoTotal = lim(focoTotal + d * 60, 5 * 60, 90 * 60); focoResta = focoTotal; pintarFoco(); };
+  $('#foco-menos').addEventListener('click', () => ajustarFoco(-5));
+  $('#foco-mais').addEventListener('click', () => ajustarFoco(5));
+  pintarFoco();
+
+  /* ======================= quadros (Moxen) ======================= */
+  function enviar(quadro, dados) { if (quadro && quadro.contentWindow) quadro.contentWindow.postMessage(dados, '*'); }
 
   function enviarInicio(quadro) {
     if (!ponte) return;
-    const tipo = quadro.dataset.quadro;
-    if (tipo === 'parrilla') {
+    if (quadro.dataset.quadro === 'parrilla') {
       ponte.carregar('layout', t => enviar(quadro, { tipo: 'init', layout: t ? JSON.parse(t) : null }));
-    } else if (tipo === 'eslabon') {
+    } else if (quadro.dataset.quadro === 'eslabon') {
       ponte.carregar('diagrama', t => { const d = t ? JSON.parse(t) : {}; enviar(quadro, { tipo: 'init', flujo: d.flujo || null }); });
     }
     enviarMetricas();
   }
 
-  // Quadros recebem mensagens: salvar layout/diagrama e ações do painel.
   window.addEventListener('message', ev => {
     const d = ev.data || {};
-    const quadro = [...document.querySelectorAll('iframe')].find(f => f.contentWindow === ev.source);
+    const quadro = $$('iframe').find(f => f.contentWindow === ev.source);
     if (!quadro || !ponte) return;
     if (d.tipo === 'salvar') {
       clearTimeout(quadro._salvar);
@@ -83,7 +631,6 @@
     }
   });
 
-  // ----- métricas e áudio para os quadros -----
   function enviarMetricas() {
     const e = estado;
     const dados = {
@@ -91,168 +638,78 @@
       energia_pct: `${e.energia ?? 0}%`, insatisfacao_pct: `${e.insatisfacao ?? 0}%`, atividade_pct: `${e.atividade ?? 0}%`,
       estimulo_pct: `${e.estimulacao ?? 0}%`, logs: e.logs || [],
     };
-    document.querySelectorAll('iframe[data-quadro="parrilla"]').forEach(f => enviar(f, { tipo: 'metricas', dados }));
+    $$('iframe[data-quadro="parrilla"]').forEach(f => enviar(f, { tipo: 'metricas', dados }));
   }
 
-  function enviarNiveis() {
-    document.querySelectorAll('iframe[data-quadro="centro"]').forEach(f =>
-      enviar(f, { tipo: 'niveis', bandas, ativo: audioAtivo, taxa: 48000 }));
-  }
+  /* ======================= chat local ======================= */
+  const mensagens = $('#mensagens'), entrada = $('#entrada');
+  const ehNuvem = m => /(:|-)cloud\b/i.test(m);
 
-  // ----- estado do backend -----
-  function aplicarEstado(e) {
-    estado = e || {};
-    $('#nome').textContent = estado.pet || 'Pestinha';
-    $('#emocao').textContent = estado.emocao || '—';
-    $('#ponto').classList.toggle('pausado', !!estado.pausado);
-    enviarMetricas();
-  }
-
-  function relogio() {
-    const agora = new Date();
-    $('#relogio').textContent = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  }
-  setInterval(relogio, 1000);
-  relogio();
-
-  // ----- espectro (canvas, redesenhado no quadro de animação) -----
-  const canvas = $('#espectro');
-  const ctx = canvas.getContext('2d');
-  let quadroPendente = false;
-
-  function desenharEspectro() {
-    if (quadroPendente) return;
-    quadroPendente = true;
-    requestAnimationFrame(() => {
-      quadroPendente = false;
-      if (!$('[data-secao="musica"]') || $('[data-secao="musica"]').classList.contains('oculta')) return;
-      const largura = canvas.clientWidth, altura = canvas.clientHeight;
-      if (canvas.width !== largura * devicePixelRatio) {
-        canvas.width = largura * devicePixelRatio;
-        canvas.height = altura * devicePixelRatio;
-      }
-      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-      ctx.clearRect(0, 0, largura, altura);
-      const n = bandas.length, gap = 4, barra = (largura - gap * (n - 1)) / n;
-      const grad = ctx.createLinearGradient(0, altura, 0, 0);
-      grad.addColorStop(0, '#3b82f6'); grad.addColorStop(1, '#22d3ee');
-      ctx.fillStyle = grad;
-      bandas.forEach((v, i) => {
-        const h = Math.max(3, v * (altura - 16));
-        const x = i * (barra + gap), y = altura - h - 8;
-        ctx.beginPath();
-        ctx.roundRect(x, y, barra, h, 4);
-        ctx.fill();
-      });
-      $('#rms').textContent = rms.toFixed(3);
-      $('#pico').textContent = pico.toFixed(3);
-    });
-  }
-
-  function aoReceberNiveis(d) {
-    bandas = Array.isArray(d.bandas) ? d.bandas : bandas;
-    rms = Number(d.rms) || 0;
-    pico = Number(d.pico) || 0;
-    enviarNiveis();
-    if (!$('[data-secao="musica"]').classList.contains('oculta')) desenharEspectro();
-  }
-
-  $('#musica-botao').addEventListener('click', () => { if (ponte) ponte.audio(!audioAtivo); });
-
-  function aoEstadoAudio(texto) {
-    if (texto === 'ativo' || texto === 'parado') {
-      audioAtivo = texto === 'ativo';
-      $('#musica-estado').textContent = audioAtivo ? 'Captura ao vivo · loopback do sistema' : 'Captura parada';
-      $('#musica-botao').textContent = audioAtivo ? 'Parar áudio' : 'Iniciar áudio';
-      if (!audioAtivo) { bandas = new Array(24).fill(0); rms = 0; pico = 0; desenharEspectro(); }
-      enviarNiveis();
-    } else {
-      audioAtivo = false;
-      $('#musica-estado').textContent = texto;
-      $('#musica-botao').textContent = 'Iniciar áudio';
-    }
-  }
-
-  // ----- chat local -----
-  const mensagens = $('#mensagens');
-  const entrada = $('#entrada');
-
-  // Avisos de conexão ficam visíveis até o Ollama voltar; os demais somem sozinhos.
   function mostrarErro(texto, persistente = false) {
     const caixa = $('#erro');
-    caixa.textContent = texto;
-    caixa.hidden = false;
+    caixa.textContent = texto; caixa.hidden = false;
     clearTimeout(caixa._t);
     if (!persistente) caixa._t = setTimeout(() => { caixa.hidden = true; }, 7000);
   }
 
   function bolha(papel, texto) {
     const el = document.createElement('div');
-    el.className = 'bolha ' + papel;
-    el.textContent = texto;
-    mensagens.appendChild(el);
-    mensagens.scrollTop = mensagens.scrollHeight;
+    el.className = 'bolha ' + papel; el.textContent = texto;
+    mensagens.appendChild(el); mensagens.scrollTop = mensagens.scrollHeight;
     return el;
   }
 
-  function vozDoModelo(modelo) {
-    return modelos.find(m => /tts|kokoro|piper|speech|f5-|chattts/i.test(m)) || modelo;
-  }
-
-  function setOcupado(valor) {
-    respondendo = valor;
-    $('#enviar').disabled = valor;
-    $('#analisar').disabled = valor;
-    $('#parar').hidden = !valor;
+  function setOcupado(v) {
+    respondendo = v;
+    $('#enviar').disabled = v; $('#analisar').disabled = v; $('#parar').hidden = !v;
   }
 
   function enviarChat(texto, exibido) {
     const modelo = $('#modelo').value;
     if (!ponte || respondendo) return;
-    if (!modelo) { mostrarErro('Nenhum modelo local selecionado. Atualize a lista com o Ollama aberto.'); return; }
+    if (!modelo) { mostrarErro('Nenhum modelo selecionado. Abra o Ollama e clique em Atualizar.'); return; }
     bolha('usuario', exibido || texto);
     historico.push({ role: 'user', content: texto });
     historico = historico.slice(-MAX_HISTORICO);
-    bolhaAtual = bolha('assistente', '…');
-    textoAtual = '';
+    bolhaAtual = bolha('assistente', '…'); textoAtual = '';
     setOcupado(true);
     ponte.enviar_chat(modelo, JSON.stringify(historico));
   }
 
-  function enviarPelaCaixa() {
-    const texto = entrada.value.trim();
-    if (!texto) return;
-    entrada.value = '';
-    enviarChat(texto);
-  }
-
+  function enviarPelaCaixa() { const t = entrada.value.trim(); if (!t) return; entrada.value = ''; enviarChat(t); }
   $('#enviar').addEventListener('click', enviarPelaCaixa);
   entrada.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviarPelaCaixa(); } });
   $('#parar').addEventListener('click', () => { if (ponte) ponte.cancelar_chat(); });
   $('#atualizar').addEventListener('click', () => { if (ponte) ponte.listar_modelos(); });
-  $('#analisar').addEventListener('click', () => {
-    const contexto = { metricas: { energia: estado.energia, estimulacao: estado.estimulacao, insatisfacao: estado.insatisfacao, atividade: estado.atividade, emocao: estado.emocao, pausado: estado.pausado }, logs_recentes: (estado.logs || []).slice(-MAX_CONTEXTO_LOGS) };
-    enviarChat(PROMPT_SISTEMA + JSON.stringify(contexto, null, 1), 'Analisar resultados do projeto');
-  });
   $('#ouvir').addEventListener('click', () => { if (ponte) ponte.ouvir(); });
-  $('#modelo').addEventListener('change', e => localStorage.setItem('pestinha.modelo', e.target.value));
-  $('#ler').addEventListener('change', e => { if (e.target.checked) mostrarErro('Leitura em voz alta ativa: a resposta será falada com o modelo local.'); });
+  $('#analisar').addEventListener('click', () => {
+    const contexto = { metricas: { energia: estado.energia, estimulacao: estado.estimulacao, insatisfacao: estado.insatisfacao,
+      atividade: estado.atividade, emocao: estado.emocao, pausado: estado.pausado }, logs_recentes: (estado.logs || []).slice(-12) };
+    enviarChat(PROMPT_ANALISE + JSON.stringify(contexto, null, 1), 'Analisar resultados do projeto');
+  });
+  $('#modelo').addEventListener('change', e => {
+    localStorage.setItem('pestinha.modelo', e.target.value);
+    $('#aviso-nuvem').hidden = !ehNuvem(e.target.value);
+    if (ponte) ponte.definir_modelo(e.target.value);
+  });
 
   function aoModelos(lista) {
     modelos = Array.isArray(lista) ? lista : [];
     const sel = $('#modelo'), salvo = localStorage.getItem('pestinha.modelo');
     sel.innerHTML = '';
-    modelos.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o); });
-    if (salvo && modelos.includes(salvo)) sel.value = salvo;
+    modelos.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = ehNuvem(m) ? m + ' (nuvem)' : m; sel.appendChild(o); });
+    const local = modelos.find(m => !ehNuvem(m));
+    if (salvo && modelos.includes(salvo)) sel.value = salvo; else if (local) sel.value = local;
     sel.disabled = !modelos.length;
+    $('#aviso-nuvem').hidden = !ehNuvem(sel.value);
+    if (ponte && sel.value) ponte.definir_modelo(sel.value);
     if (modelos.length) $('#erro').hidden = true;
     else mostrarErro('Nenhum modelo instalado encontrado no Ollama local.', true);
   }
 
   function aoToken(t) {
     if (!bolhaAtual) return;
-    textoAtual += t;
-    bolhaAtual.textContent = textoAtual;
+    textoAtual += t; bolhaAtual.textContent = textoAtual;
     mensagens.scrollTop = mensagens.scrollHeight;
   }
 
@@ -260,24 +717,46 @@
     if (bolhaAtual && textoAtual) {
       historico.push({ role: 'assistant', content: textoAtual });
       historico = historico.slice(-MAX_HISTORICO);
-      if ($('#ler').checked && ponte) ponte.falar_resposta(vozDoModelo($('#modelo').value), textoAtual);
-    } else if (bolhaAtual && !textoAtual) {
-      bolhaAtual.remove();
-    }
+      if ($('#ler').checked && ponte) {
+        const voz = modelos.find(m => /tts|kokoro|piper|speech|f5-|chattts/i.test(m)) || $('#modelo').value;
+        ponte.falar_resposta(voz, textoAtual);
+      }
+      if (!aberta || vista !== 'chat') falar('Respondi no chat, quer dar uma olhada?', 'sistema', 'calmo');
+    } else if (bolhaAtual) bolhaAtual.remove();
     bolhaAtual = null;
     setOcupado(false);
   }
 
   function aoErro(texto) {
     mostrarErro(texto, /desconectad/i.test(texto));
+    alertaAte = performance.now() + 3000;
     if (respondendo && bolhaAtual && !textoAtual) { bolhaAtual.remove(); bolhaAtual = null; }
   }
 
-  // ----- ligação com o backend (QWebChannel) -----
+  /* ======================= laço de animação ======================= */
+  function redimensionarCanvases() { grafico.desenhar(); desenharSomMini(); }
+  window.addEventListener('resize', redimensionarCanvases);
+
+  let ultimo = performance.now();
+  function quadro(t) {
+    const dt = lim((t - ultimo) / 1000, 0, .05);
+    ultimo = t;
+    const humor = atualizarCores();
+    orbe.desenhar(humor, dt);
+    if (aberta && vista === 'home') { grafico.desenhar(); desenharSomMini(); }
+    if (aberta && vista === 'som') estudio.desenhar(dt);
+    requestAnimationFrame(quadro);
+  }
+  requestAnimationFrame(quadro);
+  aplicarForma();
+
+  /* ======================= ponte com o Python ======================= */
   if (window.QWebChannel && window.qt) {
     new QWebChannel(qt.webChannelTransport, canal => {
       ponte = canal.objects.ponte;
       ponte.estado.connect(s => aplicarEstado(JSON.parse(s)));
+      ponte.aviso.connect(s => { const a = JSON.parse(s); falar(a.texto, a.origem, a.tom); });
+      ponte.narrador_estado.connect(s => { pensandoNarrador = s === 'pensando'; });
       ponte.niveis.connect(s => aoReceberNiveis(JSON.parse(s)));
       ponte.audio_estado.connect(aoEstadoAudio);
       ponte.modelos.connect(s => aoModelos(JSON.parse(s)));
@@ -285,13 +764,13 @@
       ponte.chat_fim.connect(aoFim);
       ponte.erro.connect(aoErro);
       ponte.transcrito.connect(texto => { entrada.value = texto; enviarPelaCaixa(); });
-      ponte.voz_estado.connect(estadoVoz => { $('#ouvir').textContent = estadoVoz === 'ouvindo' ? 'Parar' : 'Falar'; });
+      ponte.voz_estado.connect(s => { $('#ouvir').textContent = s === 'ouvindo' ? 'Ouvindo…' : 'Falar'; });
       ponte.obter_estado(s => aplicarEstado(JSON.parse(s)));
       ponte.listar_modelos();
+      informarRegiao(mola.w, mola.h);
+      setTimeout(() => falar(`Núcleo online. Estou de olho no ${estado.pet || 'Pestinha'}.`, 'sistema', 'calmo'), 900);
     });
-  } else {
-    mostrarErro('Ponte com o Python indisponível.');
   }
 
-  ativarAba('painel');
+  window.nucleoDebug = { abrir, mostrarVista, falar, niveis: aoReceberNiveis, audio: aoEstadoAudio };   // testes e capturas
 })();

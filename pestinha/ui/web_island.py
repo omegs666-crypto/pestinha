@@ -1,13 +1,17 @@
-"""Ilha dinâmica em WebEngine: janela sem bordas, sempre no topo e centralizada no topo da tela.
+"""Núcleo: a ilha em WebEngine, sem bordas, sempre no topo e centralizada no topo da tela.
 
-A aparência vem de `ui/web/` (estilo Coucou + Moxen traduzidos); o backend fica em `ui/web_bridge.py`.
-Sem PySide6-WebEngine instalado, `criar_ilha` devolve a ilha nativa (`ui/ilha.py`) como fallback.
+A janela tem tamanho fixo (a maior área que a interface usa) e fica quase toda transparente.
+Toda a animação (molas, expansão, orbe) roda em CSS/canvas dentro da página; a página informa
+pela ponte o retângulo visível, e a janela aplica `setMask`: fora dele o clique passa para o
+desktop. Assim nada redimensiona a cada quadro e o movimento fica liso.
+
+Sem PySide6-WebEngine instalado, `criar_ilha` devolve a ilha nativa (`ui/ilha.py`).
 """
 
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, Qt, QUrl
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QRect, Qt, QUrl
+from PySide6.QtGui import QColor, QRegion
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from .ilha import Ilha
@@ -21,26 +25,24 @@ except ImportError:
     WEB_OK = False
 
 PAGINA = Path(__file__).resolve().parent / "web" / "index.html"
-COMPACTA = (300, 40)
-EXPANDIDA = (980, 520)
-ANIMACAO_MS = 260
+JANELA = (1040, 620)            # área máxima usada pela interface expandida
+REGIAO_INICIAL = (330, 0, 380, 52)
 
 
 class WebIlha(QWidget):
-    """Pílula no topo da tela; expande e recolhe com animação de geometria."""
+    """Janela transparente que recorta o clique para a forma visível da interface."""
 
     def __init__(self, app, parent=None):
         super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
                          | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowTitle("Pestinha")
-        self._aberta = False
-        self._anim = None
         self.ponte = Ponte(app, self)
-        self.ponte.expansao.connect(self.expandir)
+        self.ponte.regiao.connect(self.aplicar_regiao)
         self.view = QWebEngineView(self)
         self.view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.view.page().setBackgroundColor(QColor(0, 0, 0, 0))
+        self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         canal = QWebChannel(self.view.page())
         canal.registerObject("ponte", self.ponte)
         self.view.page().setWebChannel(canal)
@@ -48,34 +50,21 @@ class WebIlha(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.view)
         self.view.setUrl(QUrl.fromLocalFile(str(PAGINA)))
-        self._posicionar(COMPACTA)
+        self._posicionar()
+        self.aplicar_regiao(*REGIAO_INICIAL)
 
-    # ----- geometria -----
-    def _alvo(self, tamanho):
+    def _posicionar(self):
         tela = self.screen().geometry() if self.screen() else None
+        largura, altura = JANELA
         if tela is None:
-            return 0, 0, tamanho[0], tamanho[1]
-        largura, altura = tamanho
-        return tela.x() + (tela.width() - largura) // 2, tela.y(), largura, altura
-
-    def _posicionar(self, tamanho):
-        self.setGeometry(*self._alvo(tamanho))
-
-    def expandir(self, aberta):
-        """Anima a janela até o tamanho aberto ou compacto (ignora pedidos repetidos)."""
-        aberta = bool(aberta)
-        if aberta == self._aberta:
+            self.setGeometry(0, 0, largura, altura)
             return
-        self._aberta = aberta
-        destino = self._alvo(EXPANDIDA if aberta else COMPACTA)
-        if self._anim is not None:
-            self._anim.stop()
-        self._anim = QPropertyAnimation(self, b"geometry", self)
-        self._anim.setDuration(ANIMACAO_MS)
-        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._anim.setStartValue(self.geometry())
-        self._anim.setEndValue(QRect(*destino))
-        self._anim.start()
+        self.setGeometry(tela.x() + (tela.width() - largura) // 2, tela.y(), largura, altura)
+
+    def aplicar_regiao(self, x, y, largura, altura):
+        """Só o retângulo visível recebe o mouse; o resto da janela é atravessável."""
+        rect = QRect(int(x), int(y), int(largura), int(altura)).intersected(self.rect())
+        self.setMask(QRegion(rect if not rect.isEmpty() else QRect(0, 0, 1, 1)))
 
     # ----- ciclo de vida -----
     def showEvent(self, event):
@@ -87,9 +76,7 @@ class WebIlha(QWidget):
         super().hideEvent(event)
 
     def shutdown(self):
-        """Para estado, áudio, Ollama e voz; chamado ao sair do app."""
-        if self._anim is not None:
-            self._anim.stop()
+        """Para estado, narrador, áudio, Ollama e voz; chamado ao sair do app."""
         self.ponte.shutdown()
 
     def closeEvent(self, event):

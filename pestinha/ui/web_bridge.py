@@ -6,6 +6,7 @@ Chamadas de rede (Ollama) e áudio rodam em workers; a ponte só troca sinais le
 """
 
 import json
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
@@ -13,13 +14,16 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from .. import log as log_module
 from ..config import EMOTION_NAMES
 from ..mind.chat_voice import ChatVoice
+from ..mind.narrador import Narrador, escolher_modelo, limpar_frase, prompt_insight
 from ..mind.ollama_local import OllamaLocal
 from ..sense.audio import CapturaLoopback
 
 PERSISTIVEIS = {"layout", "diagrama"}
 LIMITE_PERSISTENCIA = 200_000
 ESTADO_MS = 500
+INSIGHT_MS = 120_000          # o Ollama comenta as métricas a cada 2 min com a ilha visível
 PAINEIS = {"neural", "greve", "mlp"}
+LIMITE_REGIAO = 4_000
 
 
 def _percentual(valor):
@@ -34,7 +38,9 @@ class Ponte(QObject):
     """Objeto registrado no QWebChannel como `ponte`."""
 
     estado = Signal(str)
-    expansao = Signal(bool)
+    regiao = Signal(int, int, int, int)
+    aviso = Signal(str)
+    narrador_estado = Signal(str)
     niveis = Signal(str)
     audio_estado = Signal(str)
     modelos = Signal(str)
@@ -65,21 +71,94 @@ class Ponte(QObject):
         self._voz.transcribed.connect(self.transcrito)
         self._voz.error.connect(self.erro)
         self._voz.activity_changed.connect(self.voz_estado)
+        # narrador: regras locais a cada estado + insight do Ollama num cliente separado do chat
+        self._narrador = Narrador()
+        self.narrador_ligado = True
+        self._modelos = []
+        self._modelo_preferido = ""
+        self._insight = ""
+        self._pedindo_insight = False
+        self._falhou_insight = False
+        self._ollama_narrador = OllamaLocal(self)
+        self._ollama_narrador.token.connect(self._insight_token)
+        self._ollama_narrador.chat_finished.connect(self._insight_fim)
+        self._ollama_narrador.error.connect(self._insight_erro)
+        self._ollama.models_ready.connect(self._guardar_modelos)
+        self._timer_insight = QTimer(self)
+        self._timer_insight.setInterval(INSIGHT_MS)
+        self._timer_insight.timeout.connect(self.pedir_insight)
 
     # ----- ciclo de vida -----
     def iniciar(self):
         self._timer.start()
+        self._timer_insight.start()
         self._emitir_estado()
 
     def parar(self):
         self._timer.stop()
+        self._timer_insight.stop()
 
     def shutdown(self):
         """Encerra workers de rede, voz e áudio ao fechar a ilha."""
         self.parar()
         self.audio(False)
         self._ollama.shutdown()
+        self._ollama_narrador.shutdown()
         self._voz.shutdown()
+
+    # ----- janela: a página informa a área visível (o resto deixa o clique passar) -----
+    @Slot(int, int, int, int)
+    def definir_regiao(self, x, y, largura, altura):
+        def lim(v):
+            return max(0, min(LIMITE_REGIAO, int(v)))
+        self.regiao.emit(lim(x), lim(y), max(1, lim(largura)), max(1, lim(altura)))
+
+    # ----- narrador -----
+    def _guardar_modelos(self, nomes):
+        self._modelos = [str(n) for n in nomes][:256]
+
+    @Slot(str)
+    def definir_modelo(self, nome):
+        """Modelo escolhido no chat; o narrador o usa se ele for local."""
+        self._modelo_preferido = str(nome)[:200]
+
+    @Slot(bool)
+    def ligar_narrador(self, ligado):
+        self.narrador_ligado = bool(ligado)
+
+    @Slot()
+    def pedir_insight(self):
+        """Pede ao Ollama uma frase sobre as métricas atuais (worker; a UI não espera)."""
+        if not self.narrador_ligado or self.offline or self._pedindo_insight:
+            return
+        modelo = escolher_modelo(self._modelos, self._modelo_preferido)
+        if not modelo:
+            return
+        self._pedindo_insight = True
+        self._insight = ""
+        self.narrador_estado.emit("pensando")
+        self._ollama_narrador.chat_stream_async(modelo, prompt_insight(self.snapshot(), getattr(self.app, "nome", "Pestinha")))
+
+    def _insight_token(self, pedaco):
+        self._insight = (self._insight + pedaco)[-2_000:]
+
+    def _insight_fim(self):
+        texto = limpar_frase(self._insight)
+        self._pedindo_insight = False
+        self._insight = ""
+        self.narrador_estado.emit("pronto")
+        if texto:
+            self._falhou_insight = False
+            self.aviso.emit(json.dumps({"texto": texto, "tom": "insight", "origem": "ollama"}, ensure_ascii=False))
+
+    def _insight_erro(self, mensagem):
+        self._pedindo_insight = False
+        self.narrador_estado.emit("erro")
+        if not self._falhou_insight:
+            self._falhou_insight = True
+            self.aviso.emit(json.dumps({"texto": "Não consegui falar com o Ollama agora.", "tom": "alerta",
+                                        "origem": "sistema"}, ensure_ascii=False))
+            log_module.log(f"[narrador] {mensagem}")
 
     # ----- estado do backend (somente leitura) -----
     def snapshot(self):
@@ -100,12 +179,24 @@ class Ponte(QObject):
             "voz": bool(self.app.perms.get("voz")),
             "travessuras": bool(self.app.perms.get("travessuras")),
             "offline": self.offline,
+            "processando": atividade >= 60 or self._treinando(),
             "logs": [str(linha)[:300] for linha in log_module.recent(40)],
         }
 
+    def _treinando(self):
+        """Laboratório MLP com treino em andamento (thread secundária)."""
+        janelas = getattr(getattr(self.app, "floats", None), "windows", None)
+        lab = janelas.get("mlp") if isinstance(janelas, dict) else None
+        return getattr(lab, "_treino_task", None) is not None
+
     def _emitir_estado(self):
         try:
-            self.estado.emit(json.dumps(self.snapshot(), ensure_ascii=False))
+            dados = self.snapshot()
+            self.estado.emit(json.dumps(dados, ensure_ascii=False))
+            if self.narrador_ligado:
+                fala = self._narrador.observar(dados, time.monotonic())
+                if fala:
+                    self.aviso.emit(json.dumps(fala, ensure_ascii=False))
         except Exception as error:  # dado corrompido no backend não derruba a ilha
             log_module.log(f"[ilha-web] estado indisponível: {error}")
 
@@ -130,11 +221,6 @@ class Ponte(QObject):
             if self.offline:
                 self._ollama.cancel_chat()
         self._emitir_estado()
-
-    @Slot(bool)
-    def expandir(self, aberto):
-        """A página pede para abrir/recolher a ilha; a janela anima a própria geometria."""
-        self.expansao.emit(bool(aberto))
 
     @Slot(str)
     def painel(self, chave):
