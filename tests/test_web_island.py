@@ -189,11 +189,21 @@ def test_posicao_da_pilula_fica_dentro_da_tela():
     from PySide6.QtCore import QRect
     tela = QRect(0, 0, 1920, 1080)
     w, h = 1040, 620
-    recuo = (w - web_island.PILULA_W) // 2
-    assert web_island.limitar_posicao(800, 0, tela, w, h) == (800, 0)
-    x, y = web_island.limitar_posicao(-5000, -300, tela, w, h)
-    assert x + recuo == 0 and y == 0                      # pílula encostada na borda esquerda
-    x, y = web_island.limitar_posicao(9000, 5000, tela, w, h)
-    assert x + recuo + web_island.PILULA_W == 1920 and y + web_island.PILULA_H == 1080
-    x, y = web_island.limitar_posicao(1290, 525, tela, w, h)
-    assert 0 <= x + recuo and x + recuo + web_island.PILULA_W <= 1920
+    regiao = QRect(*web_island.REGIAO_INICIAL)            # pílula fechada: (330, 0, 380, 52)
+    assert web_island.limitar_posicao(800, 0, tela, w, h, regiao) == (800, 0)
+    x, y = web_island.limitar_posicao(-5000, -300, tela, w, h, regiao)
+    assert x + regiao.left() == 0 and y == 0              # região encostada na borda esquerda
+    x, y = web_island.limitar_posicao(9000, 5000, tela, w, h, regiao)
+    assert x + regiao.right() == 1919 and y + regiao.bottom() == 1079
+    x, y = web_island.limitar_posicao(1520, 529, tela, w, h, regiao)
+    assert 0 <= x + regiao.left() and x + regiao.right() <= 1919
+
+
+def test_posicao_limita_regiao_larga_do_balao():
+    """O balão do narrador alarga a pílula (~940 px): a região inteira fica na tela, não só 380 px."""
+    from PySide6.QtCore import QRect
+    tela = QRect(0, 0, 1920, 1080)
+    w, h = 1040, 620
+    regiao = QRect(32, 0, 976, 88)                        # máscara real medida com balão ativo
+    x, y = web_island.limitar_posicao(1520, 529, tela, w, h, regiao)
+    assert x + regiao.right() == 1919 and x + regiao.left() >= 0

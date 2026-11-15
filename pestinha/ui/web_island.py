@@ -28,17 +28,22 @@ except ImportError:
 PAGINA = Path(__file__).resolve().parent / "web" / "index.html"
 JANELA = (1040, 620)            # área máxima usada pela interface expandida
 REGIAO_INICIAL = (330, 0, 380, 52)
-PILULA_W, PILULA_H = 380, 52     # tamanho da pílula fechada (ver REGIAO_INICIAL)
-MARGEM_VISIVEL = 120            # px da pílula que ficam na tela quando você a joga para a borda
 ARQUIVO_POSICAO = "web_posicao.json"
 
 
-def limitar_posicao(x, y, tela, largura, altura):
-    """A pílula (centralizada na janela) fica sempre inteira dentro da tela; a janela pode ter partes para fora."""
-    recuo = (largura - PILULA_W) // 2                  # onde a pílula começa dentro da janela
-    px = min(max(int(x) + recuo, tela.left()), tela.left() + tela.width() - PILULA_W)
-    py = min(max(int(y), tela.top()), tela.top() + tela.height() - PILULA_H)
-    return px - recuo, py
+def limitar_posicao(x, y, tela, largura, altura, regiao):
+    """A área visível (`regiao`, em coordenadas da janela) fica sempre inteira dentro da tela.
+
+    A pílula muda de largura quando o balão de narrador aparece (380 → ~940 px), então o limite
+    usa a região real informada pela página, não um tamanho fixo. A janela pode sair da tela;
+    o conteúdo visível, nunca."""
+    lo_x = tela.left() - regiao.left()
+    hi_x = tela.left() + tela.width() - 1 - regiao.right()
+    lo_y = tela.top() - regiao.top()
+    hi_y = tela.top() + tela.height() - 1 - regiao.bottom()
+    rx = min(max(int(x), lo_x), max(lo_x, hi_x))
+    ry = min(max(int(y), lo_y), max(lo_y, hi_y))
+    return rx, ry
 
 
 class WebIlha(QWidget):
@@ -70,10 +75,11 @@ class WebIlha(QWidget):
 
     def _posicionar(self):
         largura, altura = JANELA
+        self._regiao = QRect(*REGIAO_INICIAL)
         salva = self._ler_posicao()
         if salva:
             tela = (QGuiApplication.screenAt(QPoint(*salva)) or QGuiApplication.primaryScreen()).geometry()
-            self.move(*limitar_posicao(*salva, tela, largura, altura))
+            self.move(*limitar_posicao(*salva, tela, largura, altura, self._regiao))
             return
         tela = self.screen().geometry() if self.screen() else None
         if tela is None:
@@ -85,7 +91,7 @@ class WebIlha(QWidget):
     def mover_por(self, dx, dy):
         destino = QPoint(self.x() + dx, self.y() + dy)
         tela = (QGuiApplication.screenAt(destino) or self.screen()).geometry()
-        self.move(*limitar_posicao(destino.x(), destino.y(), tela, self.width(), self.height()))
+        self.move(*limitar_posicao(destino.x(), destino.y(), tela, self.width(), self.height(), self._regiao))
 
     def _arquivo_posicao(self):
         return Path(self._app.paths.memory) / ARQUIVO_POSICAO
@@ -107,7 +113,15 @@ class WebIlha(QWidget):
     def aplicar_regiao(self, x, y, largura, altura):
         """Só o retângulo visível recebe o mouse; o resto da janela é atravessável."""
         rect = QRect(int(x), int(y), int(largura), int(altura)).intersected(self.rect())
-        self.setMask(QRegion(rect if not rect.isEmpty() else QRect(0, 0, 1, 1)))
+        self._regiao = rect if not rect.isEmpty() else QRect(0, 0, 1, 1)
+        self.setMask(QRegion(self._regiao))
+        if self.isVisible():
+            # A região cresceu (balão do narrador)? Traz de volta para dentro da tela.
+            tela = (QGuiApplication.screenAt(QPoint(self.x() + self._regiao.center().x(), self.y()))
+                    or self.screen()).geometry()
+            novo = limitar_posicao(self.x(), self.y(), tela, self.width(), self.height(), self._regiao)
+            if novo != (self.x(), self.y()):
+                self.move(*novo)
 
     # ----- ciclo de vida -----
     def showEvent(self, event):
