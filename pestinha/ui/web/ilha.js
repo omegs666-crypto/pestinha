@@ -143,13 +143,16 @@
   }
 
   // hover abre com um pequeno atraso; sair começa a contagem para recolher
+  // durante o arraste a janela anda sob o cursor: esses eventos de entrada/saída não contam
+  let arrastando = false, fimArrasteT = 0;
   nucleo.addEventListener('mouseenter', () => {
+    if (arrastando) return;
     cancelarContagem();
     if (!aberta) timerAbrir = setTimeout(() => abrir(true), 260);
   });
   nucleo.addEventListener('mouseleave', () => {
     clearTimeout(timerAbrir);
-    agendarRecolher();
+    if (!arrastando) agendarRecolher();
   });
   // Arrastar: segurar a barra e mover leva a pílula para qualquer lugar da tela (a janela acompanha).
   // Passou de 4 px vira arraste; o clique que vem logo depois é ignorado.
@@ -163,6 +166,7 @@
     if (!arraste) return;
     const dx = e.screenX - arraste.x, dy = e.screenY - arraste.y;
     if (!arrastou && Math.hypot(e.screenX - arraste.sx, e.screenY - arraste.sy) < 4) return;
+    if (!arrastou) { arrastando = true; clearTimeout(timerAbrir); cancelarContagem(); }
     arrastou = true;
     arraste.x = e.screenX; arraste.y = e.screenY;
     if (dx || dy) { if (ponte) ponte.arrastar(Math.round(dx), Math.round(dy)); }
@@ -171,6 +175,7 @@
     if (!arraste) return;
     if (arrastou && ponte) ponte.soltar();
     arraste = null;
+    if (arrastou) { clearTimeout(fimArrasteT); fimArrasteT = setTimeout(() => { arrastando = false; }, 450); }
     setTimeout(() => { arrastou = false; }, 0);   // o clique que vem depois do arraste não conta
   };
   document.addEventListener('pointerup', soltar);

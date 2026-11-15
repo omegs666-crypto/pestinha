@@ -22,3 +22,12 @@
 
 ## Privacidade
 - `web_posicao.json` guarda só coordenadas da tela. Nada sai do PC.
+
+## Correção: a pílula abria ao tentar mover
+- Causa provável: o `mouseenter` do núcleo abre a ilha após 260 ms. Durante o arraste a janela anda
+  sob o cursor (o movimento passa pela ponte), então o cursor sai e volta à área da pílula e o
+  evento disparava a abertura. O `mouseleave` também começava a contagem para recolher.
+- Correção: enquanto arrasta, `mouseenter` e `mouseleave` são ignorados e os timers de abrir e
+  recolher são cancelados. Depois de soltar, uma janela de 450 ms ainda ignora esses eventos.
+- Verificado: `mouseenter` durante o arraste deixa a ilha fechada; `mouseenter` normal depois do
+  arraste abre. Não confirmado com mouse físico.
