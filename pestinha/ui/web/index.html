@@ -173,6 +173,14 @@
           <div class="erro" id="erro" role="alert" hidden></div>
           <div class="aviso-chat" id="voz-baixar" hidden>Para eu ouvir sua voz, baixe o modelo local de reconhecimento (Parakeet, ~<span id="voz-mb">670</span> MB, uma vez só, roda offline).
             <button type="button" class="pilula" id="voz-baixar-bt">Baixar</button> <span id="voz-progresso"></span></div>
+          <div class="vibra" id="vibra" aria-label="Vibração do áudio da resposta">
+            <canvas id="vibra-cv"></canvas>
+            <div class="vibra-barra">
+              <span class="vibra-estado" id="vibra-estado">Pronta</span>
+              <span class="vibra-leds" id="vibra-leds" aria-hidden="true"></span>
+              <span class="vibra-tempo" id="vibra-tempo">00:00.0</span>
+            </div>
+          </div>
           <div class="mensagens" id="mensagens"></div>
           <div class="composer">
             <textarea id="entrada" placeholder="Pergunte ao modelo local… (Ctrl+Enter envia)"></textarea>

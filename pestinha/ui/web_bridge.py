@@ -20,6 +20,7 @@ from ..mind.convivencia import ler_persona, prompt_fala
 from ..mind.narrador import Narrador, escolher_modelo, limpar_frase, prompt_insight
 from ..mind.ollama_local import OllamaLocal
 from ..sense import ouvir as ouvir_mod
+from ..sense.envelope import envelope_wav
 from ..sense.audio import CapturaLoopback
 
 PERSISTIVEIS = {"layout", "diagrama"}
@@ -60,6 +61,7 @@ class Ponte(QObject):
     voz_estado = Signal(str)
     voz_modelo = Signal(str)        # "pronto", "ausente", "baixando", erro
     voz_download = Signal(int)
+    envelope = Signal(str)          # volume da fala do LLM ao longo do tempo (para a vibração do chat)
     desgrudou = Signal()            # a pílula saiu do topo (o usuário a puxou para baixo)
     modo_mudou = Signal(str)        # "topo" (encostada) ou "livre"
 
@@ -80,6 +82,7 @@ class Ponte(QObject):
         self._ollama.chat_finished.connect(self.chat_fim)
         self._ollama.error.connect(self.erro)
         self._ollama.response_limited.connect(lambda: self.erro("Resposta longa demais: o texto foi limitado."))
+        self._ollama.speech_ready.connect(self._envelope_fala)      # antes de tocar: a vibração começa junto com o som
         self._ollama.speech_ready.connect(self._voz.play_wav)
         self._ollama.speech_failed.connect(self._voz_do_sistema)
         self._voz.transcribed.connect(self.transcrito)
@@ -396,6 +399,11 @@ class Ponte(QObject):
             self._ollama.speak_async(modelo or candidatos[0], self._ultimo_texto, candidatos)
         else:
             self._voz.speak(self._ultimo_texto)
+
+    def _envelope_fala(self, dados):
+        env = envelope_wav(bytes(dados))
+        if env:
+            self.envelope.emit(json.dumps(env))
 
     def _voz_do_sistema(self, _mensagem):
         """Falha da voz do LLM: fala o último texto com a voz do sistema, sem travar o chat."""

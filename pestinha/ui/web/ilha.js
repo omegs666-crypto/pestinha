@@ -379,6 +379,63 @@
     };
   })();
 
+  /* ======================= vibração do chat: onda da resposta (como a aba Som) ======================= */
+  // Barras que rolam da direita para a esquerda. Cada token da resposta dá um pulso; a fala do modelo
+  // (envelope do WAV, enviado pelo Python logo antes de tocar) desenha o volume real no tempo.
+  const vibra = (() => {
+    const c = $('#vibra-cv'), ctx = c.getContext('2d');
+    const N = 56, POR_S = 24, leds = $('#vibra-leds');
+    for (let i = 0; i < 12; i++) leds.appendChild(document.createElement('i'));
+    const barras = new Float32Array(N);
+    let env = null, t0 = 0, dur = 0, origem = '', pulso = 0, falando = false, ultimosLeds = -1, ultimoEstado = '';
+    const fmt = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}.${Math.floor(s * 10) % 10}`;
+
+    function falar(dados, nomeOrigem) {
+      env = Array.isArray(dados.valores) && dados.valores.length ? dados.valores : null;
+      dur = Number(dados.duracao) || 0;
+      t0 = performance.now(); origem = nomeOrigem; falando = !!env;
+    }
+    function pulsar(v) { pulso = Math.min(1, pulso + v); }
+
+    function desenhar(dt) {
+      const agora = performance.now(), w = c.clientWidth, h = c.clientHeight;
+      if (!w || !h) return;
+      ajustarCanvas(c, w, h);
+      ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      pulso *= Math.exp(-dt * 4);
+      if (falando && agora - t0 > dur * 1000 + 250) falando = false;
+      const gap = 2, bw = (w - gap * (N - 1)) / N;
+      const c1 = `rgb(${cor.a1.map(Math.round)})`, c2 = `rgb(${cor.a2.map(Math.round)})`;
+      const g = ctx.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, c2); g.addColorStop(1, c1);
+      ctx.fillStyle = g;
+      let soma = 0;
+      for (let i = 0; i < N; i++) {
+        let a = .05 + .03 * Math.sin(i * .5 + agora / 260);                            // ondulação parada
+        a = Math.max(a, pulso * (.25 + .45 * Math.abs(Math.sin(i * .9 + agora / 140))));  // pulso dos tokens
+        if (falando) {
+          const p = (agora - t0) / 1000 * POR_S - (N - 1 - i) * .5;                     // a onda rola para a esquerda
+          if (p >= 0 && p < env.length) a = Math.max(a, env[Math.floor(p)]);
+        }
+        barras[i] += (lim(a, 0, 1) - barras[i]) * Math.min(1, dt * 18);
+        soma += barras[i];
+        const bh = Math.max(2, barras[i] * (h - 22));
+        ctx.fillRect(i * (bw + gap), (h - 20 - bh) / 2 + 4, bw, bh);
+      }
+      const nivel = Math.round(soma / N * 12);
+      if (nivel !== ultimosLeds) {
+        ultimosLeds = nivel;
+        $$('i', leds).forEach((l, i) => { l.className = i < nivel ? ('on' + (i >= 9 ? ' quente' : '')) : ''; });
+      }
+      const estado = falando ? (origem === 'modelo' ? 'Falando · voz do modelo' : 'Falando · voz do sistema')
+        : respondendo ? 'Escrevendo a resposta…' : 'Pronta';
+      if (estado !== ultimoEstado) { ultimoEstado = estado; $('#vibra-estado').textContent = estado; }
+      $('#vibra-tempo').textContent = fmt(falando ? Math.max(0, (agora - t0) / 1000) : 0);
+    }
+    return { desenhar, falar, pulsar };
+  })();
+
   /* ======================= som de clique ======================= */
   // Um "blip" curto sintetizado aqui: os sons do Coucou têm licença própria e não são copiados para o projeto.
   let somCtx = null;
@@ -1049,6 +1106,7 @@
   $('#voz-baixar-bt').addEventListener('click', () => { if (ponte) ponte.baixar_modelo_voz(); });
 
   function aoToken(t) {
+    vibra.pulsar(.5);
     if (!bolhaAtual) return;
     textoAtual += t; bolhaAtual.textContent = textoAtual;
     mensagens.scrollTop = mensagens.scrollHeight;
@@ -1194,6 +1252,7 @@
     }
     if (aberta && vista === 'home') { grafico.desenhar(); desenharSomMini(); }
     if (aberta && vista === 'som') estudio.desenhar(dt);
+    if (aberta && vista === 'chat') vibra.desenhar(dt);
     requestAnimationFrame(quadro);
   }
   requestAnimationFrame(quadro);
@@ -1216,6 +1275,7 @@
       ponte.chat_fim.connect(aoFim);
       ponte.erro.connect(aoErro);
       ponte.transcrito.connect(texto => { veioDeVoz = true; entrada.value = texto; enviarPelaCaixa(); });
+      ponte.envelope.connect(s => vibra.falar(JSON.parse(s), 'modelo'));
       ponte.voz_estado.connect(s => { $('#ouvir').textContent = s === 'ouvindo' ? 'Ouvindo… (clique p/ parar)' : s === 'transcrevendo' ? 'Entendendo…' : 'Falar'; });
       ponte.voz_modelo.connect(aoModeloVoz);
       ponte.voz_download.connect(p => { $('#voz-progresso').textContent = p + '%'; });
