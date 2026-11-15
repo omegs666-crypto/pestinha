@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from pestinha.core.mlp import NeuralNetwork
@@ -17,7 +19,7 @@ def _qt():
 
 def _lab(tmp_path):
     _qt()
-    app = SimpleNamespace(paths=SimpleNamespace(panels=Path(tmp_path)))
+    app = SimpleNamespace(paths=SimpleNamespace(panels=Path(tmp_path) / "panels.json"))
     return lab_mlp.LabMLP(app, (40, 40))
 
 
@@ -124,3 +126,16 @@ def test_painel_tem_fundo_opaco_escuro_como_os_outros(tmp_path):
     cor = imagem.pixelColor(240, 40)
     assert cor.alpha() == 255 and cor.red() < 60 and cor.green() < 60
     assert imagem.pixelColor(1, 1).alpha() == 0
+
+
+def test_arrastar_pelo_grafico_move_o_painel(tmp_path):
+    """Os widgets de dentro (gráfico, rede) não podem engolir o arraste: o painel continua movível por eles."""
+    lab = _lab(tmp_path)
+    lab.show()
+    antes = lab.pos()
+    centro = QPoint(lab.curva.width() // 2, lab.curva.height() // 2)
+    QTest.mousePress(lab.curva, Qt.LeftButton, Qt.NoModifier, centro)
+    QTest.mouseMove(lab.curva, centro + QPoint(40, 30))
+    QTest.mouseRelease(lab.curva, Qt.LeftButton, Qt.NoModifier, centro + QPoint(40, 30))
+    assert lab.pos() != antes
+    lab.close()

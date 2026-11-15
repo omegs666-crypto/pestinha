@@ -254,6 +254,7 @@ class CurvaPerda(QWidget):
     def mouseMoveEvent(self, event):
         self._mouse_x = event.position().x()
         self.update()
+        event.ignore()                  # o hover não pode engolir o arraste do painel (o movimento sobe ao painel)
 
     def _area(self):
         """Retângulo do gráfico, descontando eixos e rótulos."""
