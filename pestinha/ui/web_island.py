@@ -28,15 +28,17 @@ except ImportError:
 PAGINA = Path(__file__).resolve().parent / "web" / "index.html"
 JANELA = (1040, 620)            # área máxima usada pela interface expandida
 REGIAO_INICIAL = (330, 0, 380, 52)
+PILULA_W, PILULA_H = 380, 52     # tamanho da pílula fechada (ver REGIAO_INICIAL)
 MARGEM_VISIVEL = 120            # px da pílula que ficam na tela quando você a joga para a borda
 ARQUIVO_POSICAO = "web_posicao.json"
 
 
 def limitar_posicao(x, y, tela, largura, altura):
-    """Mantém a janela com pelo menos MARGEM_VISIVEL px visíveis na horizontal e a barra no topo ou abaixo."""
-    x = min(max(int(x), tela.left() - largura + MARGEM_VISIVEL), tela.right() - MARGEM_VISIVEL)
-    y = min(max(int(y), tela.top()), tela.bottom() - altura // 4)
-    return x, y
+    """A pílula (centralizada na janela) fica sempre inteira dentro da tela; a janela pode ter partes para fora."""
+    recuo = (largura - PILULA_W) // 2                  # onde a pílula começa dentro da janela
+    px = min(max(int(x) + recuo, tela.left()), tela.left() + tela.width() - PILULA_W)
+    py = min(max(int(y), tela.top()), tela.top() + tela.height() - PILULA_H)
+    return px - recuo, py
 
 
 class WebIlha(QWidget):
