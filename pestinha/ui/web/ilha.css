@@ -244,6 +244,8 @@ select { background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 
   transform-origin: 0 50%; transform: scaleX(1); pointer-events: none; }
 .contagem[hidden] { display: none; }
 .balao { cursor: pointer; }
+.barra { cursor: grab; }
+.barra:active { cursor: grabbing; }
 
 /* ----- escolha de modelo: lista própria, dentro da ilha (não fecha ao passar o mouse) ----- */
 .escolha { position: relative; }

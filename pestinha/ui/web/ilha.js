@@ -151,8 +151,32 @@
     clearTimeout(timerAbrir);
     agendarRecolher();
   });
-  $('#orbe').addEventListener('click', () => { orbe.explodir(); abrir(!aberta); });
-  $('#balao').addEventListener('click', () => abrir(true));
+  // Arrastar: segurar a barra e mover leva a pílula para qualquer lugar da tela (a janela acompanha).
+  // Passou de 4 px vira arraste; o clique que vem logo depois é ignorado.
+  let arraste = null, arrastou = false;
+  $('#barra').addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    arraste = { x: e.screenX, y: e.screenY, sx: e.screenX, sy: e.screenY };
+    arrastou = false;
+  });
+  document.addEventListener('pointermove', e => {
+    if (!arraste) return;
+    const dx = e.screenX - arraste.x, dy = e.screenY - arraste.y;
+    if (!arrastou && Math.hypot(e.screenX - arraste.sx, e.screenY - arraste.sy) < 4) return;
+    arrastou = true;
+    arraste.x = e.screenX; arraste.y = e.screenY;
+    if (dx || dy) { if (ponte) ponte.arrastar(Math.round(dx), Math.round(dy)); }
+  });
+  const soltar = () => {
+    if (!arraste) return;
+    if (arrastou && ponte) ponte.soltar();
+    arraste = null;
+    setTimeout(() => { arrastou = false; }, 0);   // o clique que vem depois do arraste não conta
+  };
+  document.addEventListener('pointerup', soltar);
+  document.addEventListener('pointercancel', soltar);
+  $('#orbe').addEventListener('click', () => { if (arrastou) return; orbe.explodir(); abrir(!aberta); });
+  $('#balao').addEventListener('click', () => { if (!arrastou) abrir(true); });
   function fixarAberta(valor) {
     fixada = valor;
     $('#fixar').classList.toggle('ligado', fixada);

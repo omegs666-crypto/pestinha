@@ -183,3 +183,13 @@ def test_pagina_carrega_com_dois_quadros_e_ponte(tmp_path):
     assert resultado.get("v") == "2:function"
     ilha.shutdown()
     ilha.close()
+
+
+def test_posicao_da_pilula_fica_dentro_da_tela():
+    from PySide6.QtCore import QRect
+    tela = QRect(0, 0, 1920, 1080)
+    assert web_island.limitar_posicao(800, 0, tela, 1040, 620) == (800, 0)            # dentro: não muda
+    x, y = web_island.limitar_posicao(-5000, -300, tela, 1040, 620)
+    assert x >= -1040 + web_island.MARGEM_VISIVEL and y == 0                        # some pela borda, mas 120 px ficam
+    x, y = web_island.limitar_posicao(9000, 5000, tela, 1040, 620)
+    assert x <= 1920 - web_island.MARGEM_VISIVEL and y <= 1080 - 155                # e o fundo não sai da tela

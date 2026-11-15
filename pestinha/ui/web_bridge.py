@@ -43,6 +43,8 @@ class Ponte(QObject):
 
     estado = Signal(str)
     regiao = Signal(int, int, int, int)
+    movimento = Signal(int, int)
+    soltou = Signal()
     aviso = Signal(str)
     narrador_estado = Signal(str)
     niveis = Signal(str)
@@ -163,6 +165,15 @@ class Ponte(QObject):
         log_module.log(f"[falas] Ollama não respondeu ao pet: {mensagem}")
 
     # ----- janela: a página informa a área visível (o resto deixa o clique passar) -----
+    @Slot(int, int)
+    def arrastar(self, dx, dy):
+        """A barra foi arrastada: a janela acompanha o mouse (limites aplicados pela janela)."""
+        self.movimento.emit(max(-4000, min(4000, int(dx))), max(-4000, min(4000, int(dy))))
+
+    @Slot()
+    def soltar(self):
+        self.soltou.emit()
+
     @Slot(int, int, int, int)
     def definir_regiao(self, x, y, largura, altura):
         def lim(v):
