@@ -78,7 +78,7 @@
       document.querySelectorAll('[data-live]').forEach(el => {
         const chave = el.dataset.live;
         if (chave === 'logs' && Array.isArray(v.logs)) {
-          el.innerHTML = v.logs.slice(-6).map(l => '<li><i style="--c:#6f9bff"></i>' + String(l).replace(/[<&]/g, c => c === '<' ? '&lt;' : '&amp;') + '<em></em></li>').join('') || '<li><i></i>Sem eventos<em></em></li>';
+          el.innerHTML = v.logs.slice(-6).map(l => '<li><i style="--c:#45e6ff"></i>' + String(l).replace(/[<&]/g, c => c === '<' ? '&lt;' : '&amp;') + '<em></em></li>').join('') || '<li><i></i>Sem eventos<em></em></li>';
         } else if (v[chave] !== undefined) {
           el.textContent = v[chave];
         }

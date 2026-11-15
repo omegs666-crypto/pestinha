@@ -87,7 +87,7 @@
     } },
     anillo: { nombre: 'Estímulo', etiqueta: '', min: [2, 2], html: () =>
       '<div class="pa-a"><div class="pa-a-anillo"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="pa-a-pista" cx="60" cy="60" r="50"/><circle class="pa-a-arco" cx="60" cy="60" r="50" style="--p:.5" data-live-p="estimulo"/></svg><span class="pa-a-num" data-live="estimulo_pct">--</span></div>' +
-      '<ul class="pa-a-leyenda"><li><i></i>Energia<b data-live="energia_pct">--</b></li><li><i style="--c:#9db8ff"></i>Insatisfação<b data-live="insatisfacao_pct">--</b></li><li><i style="--c:#c9d6f5"></i>Atividade<b data-live="atividade_pct">--</b></li></ul></div>' },
+      '<ul class="pa-a-leyenda"><li><i></i>Energia<b data-live="energia_pct">--</b></li><li><i style="--c:#7c6bff"></i>Insatisfação<b data-live="insatisfacao_pct">--</b></li><li><i style="--c:#a8f1ff"></i>Atividade<b data-live="atividade_pct">--</b></li></ul></div>' },
     calor: { nombre: 'Atividade', etiqueta: 'Por semana', min: [3, 2], html: () =>
       '<div class="pa-c"><div class="pa-c-malla" data-malla aria-hidden="true"></div><div class="pa-c-pie" aria-hidden="true"><span>Menos</span><span class="pa-c-esc"><i style="--a:.1"></i><i style="--a:.3"></i><i style="--a:.55"></i><i style="--a:.8"></i><i style="--a:1"></i></span><span>Mais</span></div></div>' },
     lista: { nombre: 'Tarefas', etiqueta: '', min: [3, 2], html: () => {
@@ -102,7 +102,7 @@
       return '<div class="pa-n"><p class="pa-n-v" data-live="energia">--</p><p class="pa-n-s">Energia do pet</p><div class="pa-n-mini" aria-hidden="true">' + Array.from({ length: 9 }, () => '<i style="--h:' + Math.round(30 + r() * 65) + '"></i>').join('') + '</div></div>';
     } },
     alertas: { nombre: 'Logs recentes', etiqueta: 'últimos', min: [3, 2], html: () =>
-      '<ul class="pa-al" data-live="logs"><li><i style="--c:#6f9bff"></i>Aguardando eventos…<em></em></li></ul>' },
+      '<ul class="pa-al" data-live="logs"><li><i style="--c:#45e6ff"></i>Aguardando eventos…<em></em></li></ul>' },
   };
   const PALETA_ICONOS = {
     linea: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M3 22l7-8 6 5 8-11 9 6"/></svg>',
@@ -111,10 +111,10 @@
   };
   const TAM_PALETA = { linea: [6, 3], pedidos: [3, 2], alertas: [4, 3] };
   const INICIAL = [
-    { id: 'energia', tipo: 'pedidos', x: 0, y: 0, w: 3, h: 2 },
-    { id: 'atividade', tipo: 'linea', x: 3, y: 0, w: 4, h: 2 },
-    { id: 'estimulo', tipo: 'anillo', x: 7, y: 0, w: 3, h: 2 },
-    { id: 'logs', tipo: 'alertas', x: 0, y: 2, w: 6, h: 2 },
+    { id: 'energia', tipo: 'pedidos', x: 0, y: 0, w: 4, h: 2 },
+    { id: 'atividade', tipo: 'linea', x: 4, y: 0, w: 5, h: 2 },
+    { id: 'estimulo', tipo: 'anillo', x: 9, y: 0, w: 3, h: 3 },
+    { id: 'logs', tipo: 'alertas', x: 0, y: 2, w: 6, h: 3 },
   ];
 
   /* =====================================================================
