@@ -1,9 +1,13 @@
-"""Núcleo: a ilha em WebEngine, sem bordas, sempre no topo e centralizada no topo da tela.
+"""Núcleo: a ilha em WebEngine, sem bordas e sempre no topo.
+
+Dois modos:
+- "topo": a cápsula fica colada no topo da tela, centralizada (como a pílula do Coucou).
+- "livre": depois de "desgrudar" (puxar a barra para baixo), ela vira um flutuante que se arrasta
+  para qualquer lugar. Soltando perto da borda de cima, ela encaixa de volta no topo.
 
 A janela tem tamanho fixo (a maior área que a interface usa) e fica quase toda transparente.
-Toda a animação (molas, expansão, orbe) roda em CSS/canvas dentro da página; a página informa
-pela ponte o retângulo visível, e a janela aplica `setMask`: fora dele o clique passa para o
-desktop. Assim nada redimensiona a cada quadro e o movimento fica liso.
+Toda a animação roda em CSS/canvas dentro da página; a página informa pela ponte o retângulo
+visível, e a janela aplica `setMask`: fora dele o clique passa para o desktop.
 
 Sem PySide6-WebEngine instalado, `criar_ilha` devolve a ilha nativa (`ui/ilha.py`).
 """
@@ -29,6 +33,12 @@ PAGINA = Path(__file__).resolve().parent / "web" / "index.html"
 JANELA = (1040, 620)            # área máxima usada pela interface expandida
 REGIAO_INICIAL = (330, 0, 380, 52)
 ARQUIVO_POSICAO = "web_posicao.json"
+ENCAIXE_PX = 24                 # solta a até esta distância do topo: volta a encostar
+
+
+def posicao_topo(tela, largura):
+    """Encostada no topo, centralizada na tela."""
+    return tela.left() + (tela.width() - largura) // 2, tela.top()
 
 
 def limitar_posicao(x, y, tela, largura, altura, regiao):
@@ -55,10 +65,13 @@ class WebIlha(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowTitle("Pestinha")
         self._app = app
+        self.modo = "topo"
+        self._regiao = QRect(*REGIAO_INICIAL)
         self.ponte = Ponte(app, self)
         self.ponte.regiao.connect(self.aplicar_regiao)
         self.ponte.movimento.connect(self.mover_por)
-        self.ponte.soltou.connect(self.salvar_posicao)
+        self.ponte.soltou.connect(self.ao_soltar)
+        self.ponte.desgrudou.connect(self.desgrudar)
         self.view = QWebEngineView(self)
         self.view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.view.page().setBackgroundColor(QColor(0, 0, 0, 0))
@@ -76,20 +89,40 @@ class WebIlha(QWidget):
     def _posicionar(self):
         largura, altura = JANELA
         self.setFixedSize(largura, altura)      # sempre o tamanho cheio: só `move` deixava a janela em 100x30
-        self._regiao = QRect(*REGIAO_INICIAL)
-        salva = self._ler_posicao()
-        if salva:
-            tela = (QGuiApplication.screenAt(QPoint(*salva)) or QGuiApplication.primaryScreen()).geometry()
-            self.move(*limitar_posicao(*salva, tela, largura, altura, self._regiao))
+        dados = self._ler_posicao()
+        if dados and dados[2] == "livre":
+            x, y, _ = dados
+            tela = (QGuiApplication.screenAt(QPoint(x, y)) or QGuiApplication.primaryScreen()).geometry()
+            self.modo = "livre"
+            self.move(*limitar_posicao(x, y, tela, largura, altura, self._regiao))
             return
-        tela = self.screen().geometry() if self.screen() else None
-        if tela is None:
-            self.setGeometry(0, 0, largura, altura)
-            return
-        self.setGeometry(tela.x() + (tela.width() - largura) // 2, tela.y(), largura, altura)
+        tela = self.screen().geometry() if self.screen() else QGuiApplication.primaryScreen().geometry()
+        self.move(*posicao_topo(tela, largura))
 
-    # ----- arrastar: a pílula vai para onde você quiser, e a posição fica salva -----
+    # ----- modo: encostada no topo ou livre -----
+    def desgrudar(self):
+        """Puxada para baixo: a cápsula sai do topo e passa a acompanhar o mouse."""
+        if self.modo != "livre":
+            self.modo = "livre"
+            self.ponte.definir_modo("livre")
+
+    def _encaixar(self, tela):
+        self.modo = "topo"
+        self.move(*posicao_topo(tela, self.width()))
+        self.ponte.definir_modo("topo")
+
+    def ao_soltar(self):
+        """Fim do arraste: se a cápsula ficou colada na borda de cima, volta a encostar."""
+        if self.modo == "livre":
+            tela = (QGuiApplication.screenAt(self.geometry().center()) or self.screen()).geometry()
+            if self.y() + self._regiao.top() <= tela.top() + ENCAIXE_PX:
+                self._encaixar(tela)
+        self.salvar_posicao()
+
+    # ----- arrastar: a cápsula livre vai para onde você quiser, e a posição fica salva -----
     def mover_por(self, dx, dy):
+        if self.modo != "livre":          # encostada no topo só se move depois de desgrudar
+            return
         destino = QPoint(self.x() + dx, self.y() + dy)
         tela = (QGuiApplication.screenAt(destino) or self.screen()).geometry()
         self.move(*limitar_posicao(destino.x(), destino.y(), tela, self.width(), self.height(), self._regiao))
@@ -98,16 +131,19 @@ class WebIlha(QWidget):
         return Path(self._app.paths.memory) / ARQUIVO_POSICAO
 
     def _ler_posicao(self):
+        """(x, y, modo) salvos; arquivos antigos (sem modo) são de uma posição livre."""
         try:
             dados = json.loads(self._arquivo_posicao().read_text(encoding="utf-8"))
             x, y = dados["x"], dados["y"]
-            return (x, y) if type(x) is int and type(y) is int else None
+            modo = dados.get("modo", "livre")
+            return (x, y, modo) if type(x) is int and type(y) is int and modo in ("topo", "livre") else None
         except (OSError, ValueError, KeyError, TypeError):
             return None
 
     def salvar_posicao(self):
         try:
-            self._arquivo_posicao().write_text(json.dumps({"x": self.x(), "y": self.y()}), encoding="utf-8")
+            self._arquivo_posicao().write_text(json.dumps({"x": self.x(), "y": self.y(), "modo": self.modo}),
+                                               encoding="utf-8")
         except OSError:
             pass
 
@@ -116,7 +152,7 @@ class WebIlha(QWidget):
         rect = QRect(int(x), int(y), int(largura), int(altura)).intersected(self.rect())
         self._regiao = rect if not rect.isEmpty() else QRect(0, 0, 1, 1)
         self.setMask(QRegion(self._regiao))
-        if self.isVisible():
+        if self.isVisible() and self.modo == "livre":
             # A região cresceu (balão do narrador)? Traz de volta para dentro da tela.
             tela = (QGuiApplication.screenAt(QPoint(self.x() + self._regiao.center().x(), self.y()))
                     or self.screen()).geometry()

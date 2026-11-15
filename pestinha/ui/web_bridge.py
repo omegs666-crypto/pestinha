@@ -12,7 +12,9 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from .. import log as log_module
+from ..body.desenho_rosto import CAMPOS_DE_COR, PADRAO
 from ..config import EMOTION_NAMES
+from ..core.emotion import EYE_SHAPES
 from ..mind.chat_voice import ChatVoice
 from ..mind.convivencia import ler_persona, prompt_fala
 from ..mind.narrador import Narrador, escolher_modelo, limpar_frase, prompt_insight
@@ -58,11 +60,14 @@ class Ponte(QObject):
     voz_estado = Signal(str)
     voz_modelo = Signal(str)        # "pronto", "ausente", "baixando", erro
     voz_download = Signal(int)
+    desgrudou = Signal()            # a pílula saiu do topo (o usuário a puxou para baixo)
+    modo_mudou = Signal(str)        # "topo" (encostada) ou "livre"
 
     def __init__(self, app, parent=None):
         super().__init__(parent)
         self.app = app
         self.offline = False
+        self.modo = "topo"
         self._ultimo_texto = ""
         self._ollama = OllamaLocal(self)
         self._voz = ChatVoice(self)
@@ -182,6 +187,28 @@ class Ponte(QObject):
     def soltar(self):
         self.soltou.emit()
 
+    @Slot()
+    def desgrudar(self):
+        self.desgrudou.emit()
+
+    @Slot(result=str)
+    def modo_inicial(self):
+        return self.modo
+
+    def definir_modo(self, modo):
+        self.modo = modo
+        self.modo_mudou.emit(modo)
+
+    @Slot(result=str)
+    def aparencia_pet(self):
+        """Cores do rosto do pet e a forma dos olhos por emoção (mesma fonte do desenho Qt)."""
+        ap = getattr(getattr(self.app, "pet", None), "aparencia", None) or PADRAO
+        return json.dumps({
+            "cores": {campo: getattr(ap, campo).name() for campo in CAMPOS_DE_COR},
+            "acessorios": {nome: cor.name() for nome, cor in ap.acessorios},
+            "olhos": EYE_SHAPES,
+        })
+
     @Slot(int, int, int, int)
     def definir_regiao(self, x, y, largura, altura):
         def lim(v):
@@ -246,6 +273,7 @@ class Ponte(QObject):
         return {
             "pet": str(getattr(self.app, "nome", "Pestinha"))[:60],
             "emocao": str(EMOTION_NAMES.get(emocao, emocao))[:40],
+            "emocao_chave": str(emocao or "observando")[:40],
             "energia": _percentual(getattr(drives, "energy", 0.0)),
             "estimulacao": _percentual(getattr(drives, "stimulation", 0.0)),
             "insatisfacao": _percentual(getattr(getattr(self.app, "protest", None), "grievance", 0.0)),

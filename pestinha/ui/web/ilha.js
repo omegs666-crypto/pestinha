@@ -35,6 +35,8 @@
   const MAX_HISTORICO = 20;
 
   let ponte = null;
+  let modoTopo = true;                    // encostada no topo da tela (false: livre, arrastável)
+  const DESGRUDAR_PX = 18;                // puxar a barra este tanto para baixo a solta do topo
   let estado = {};
   let aberta = false, fixada = false, vista = 'home';
   let timerAbrir = null, timerFechar = null;
@@ -48,7 +50,16 @@
   function aplicarForma() {
     nucleo.style.width = mola.w.toFixed(1) + 'px';
     nucleo.style.height = mola.h.toFixed(1) + 'px';
-    nucleo.style.borderRadius = mola.r.toFixed(1) + 'px';
+    const r = mola.r.toFixed(1) + 'px';
+    nucleo.style.borderRadius = modoTopo ? `0 0 ${r} ${r}` : r;   // no topo, só as bordas de baixo são arredondadas
+  }
+
+  function aplicarModo(topo) {
+    modoTopo = topo;
+    nucleo.classList.toggle('topo', topo);
+    nucleo.classList.toggle('livre', !topo);
+    aplicarForma();
+    informarRegiao(mola.w, mola.h);
   }
 
   function informarRegiao(w, h) {
@@ -169,6 +180,15 @@
     if (!arrastou) { arrastando = true; clearTimeout(timerAbrir); cancelarContagem(); }
     arrastou = true;
     arraste.x = e.screenX; arraste.y = e.screenY;
+    if (modoTopo) {
+      // encostada no topo: só desgruda ao puxar para baixo; arrastar de lado não move nada
+      const tx = e.screenX - arraste.sx, ty = e.screenY - arraste.sy;
+      if (ty < DESGRUDAR_PX || ty < Math.abs(tx)) return;
+      aplicarModo(false);
+      if (ponte) ponte.desgrudar();
+      nucleo.classList.add('soltando');
+      setTimeout(() => nucleo.classList.remove('soltando'), 480);
+    }
     if (dx || dy) { if (ponte) ponte.arrastar(Math.round(dx), Math.round(dy)); }
   });
   const soltar = () => {
@@ -256,6 +276,108 @@
       humor === 'pensando' ? '2.4s' : humor === 'processando' ? '3.4s' : humor === 'som' ? (4.5 - rms * 30).toFixed(2) + 's' : '9s');
     return humor;
   }
+
+  /* ======================= mascote: o rosto do pet, como body/desenho_rosto.py ======================= */
+  // Mesmo desenho do pet (moldura, tela, olhos por emoção, piscada, olhar, boca, gravata e óculos).
+  // As formas dos olhos e as cores vêm do Python (ponte.aparencia_pet), sem duplicar a tabela.
+  const mascote = (() => {
+    const c = $('#mascote'), ctx = c.getContext('2d');
+    const W = 40, H = 34, K = .28;                 // corpo de 120x90 em escala
+    const FORMA0 = { w: 30, h: 40, inner: .14, outer: 0, smile: 0, dy: 0 };
+    let olhos = {}, cores = { moldura: '#63e56f', casca: '#101512', tela: '#171e19', olho: '#3ee877', brilho: '#c8ffd8' };
+    let acess = {}, forma = { ...FORMA0 }, emocao = 'observando', boca = 0, t = 0;
+    let piscada = 0, proxPiscada = 2, gx = 0, gy = 0, pontX = -1e4, pontY = -1e4;
+    c.width = W * DPR(); c.height = H * DPR();
+    document.addEventListener('pointermove', e => { pontX = e.clientX; pontY = e.clientY; });
+
+    function rr(x, y, w, h, r) {
+      ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+    }
+
+    function desenhar(dt) {
+      t += dt;
+      const destino = olhos[emocao] || olhos.observando || FORMA0, k = Math.min(1, dt * 9);
+      for (const p of ['w', 'h', 'inner', 'outer', 'smile', 'dy']) forma[p] += (destino[p] - forma[p]) * k;
+      proxPiscada -= dt;
+      if (proxPiscada <= 0) { piscada = .14; proxPiscada = 2.5 + Math.random() * 3; }
+      piscada = Math.max(0, piscada - dt);
+      const pisco = piscada > 0 ? .05 : 1;
+      const r = c.getBoundingClientRect();
+      gx += (lim((pontX - (r.left + r.width / 2)) / 160, -1, 1) - gx) * Math.min(1, dt * 6);
+      gy += (lim((pontY - (r.top + r.height / 2)) / 120, -1, 1) - gy) * Math.min(1, dt * 6);
+      boca += ((respondendo ? 3 + 9 * Math.abs(Math.sin(t * 9)) : 0) - boca) * Math.min(1, dt * 14);
+
+      ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.translate(W / 2, H / 2); ctx.scale(K, K);
+      ctx.lineJoin = 'round';
+      ctx.fillStyle = cores.casca; ctx.strokeStyle = cores.moldura; ctx.lineWidth = 5;
+      rr(-60, -45, 120, 90, 20); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = cores.tela; rr(-49, -34, 98, 68, 12); ctx.fill();
+
+      for (const lado of [-1, 1]) {
+        const w = forma.w;
+        let h = forma.h * pisco;
+        if (emocao === 'curioso' && lado === 1) h *= 1.15;
+        h = Math.max(h, 3);
+        const cx = lado * 24 + gx * 4, cy = forma.dy + gy * 3, topo = cy - h / 2;
+        ctx.fillStyle = cores.olho; rr(cx - w / 2, topo, w, h, Math.min(w, h) * .38); ctx.fill();
+        if (pisco > .5) {                                   // pálpebras e sorriso cortam o olho com a cor da tela
+          const fora = cx + lado * w / 2, dentro = cx - lado * w / 2;
+          ctx.fillStyle = cores.tela;
+          ctx.beginPath(); ctx.moveTo(fora + lado * 4, topo - 40); ctx.lineTo(dentro - lado * 4, topo - 40);
+          ctx.lineTo(dentro - lado * 4, topo + forma.inner * h); ctx.lineTo(fora + lado * 4, topo + forma.outer * h);
+          ctx.closePath(); ctx.fill();
+          if (forma.smile > .02) {
+            const ch = h * forma.smile * 1.6;
+            ctx.beginPath(); ctx.ellipse(cx, topo + h + ch * .05, w * .75, ch / 2, 0, 0, Math.PI * 2); ctx.fill();
+          }
+          if (h >= 8) {                                     // brilho, só com o olho aberto
+            ctx.save(); rr(cx - w / 2, topo, w, h, Math.min(w, h) * .38); ctx.clip();
+            ctx.fillStyle = cores.brilho;
+            ctx.beginPath(); ctx.arc(cx - w * .18 + gx * 3, topo + h * (.24 + Math.max(forma.inner, forma.outer) * .6) + gy * 2, 3.6, 0, Math.PI * 2);
+            ctx.fill(); ctx.restore();
+          }
+        }
+      }
+
+      ctx.strokeStyle = cores.olho; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-13, 22); ctx.quadraticCurveTo(0, 22 + boca, 13, 22);
+      if (boca > 8) { ctx.closePath(); ctx.fillStyle = '#000'; ctx.fill(); }
+      ctx.stroke();
+
+      if (acess.oculos) {
+        ctx.strokeStyle = acess.oculos; ctx.lineWidth = 2;
+        for (const lado of [-1, 1]) { rr(lado * 24 - 21, -25, 42, 52, 10); ctx.stroke(); }
+        ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-3, -18); ctx.lineTo(3, -18); ctx.stroke();
+      }
+      if (acess.gravata) {
+        ctx.fillStyle = acess.gravata; ctx.strokeStyle = acess.gravata; ctx.lineWidth = 1;
+        ctx.fillRect(-4, 21, 8, 6);
+        ctx.beginPath(); ctx.moveTo(-3, 26); ctx.lineTo(3, 26); ctx.lineTo(5.5, 38); ctx.lineTo(0, 42); ctx.lineTo(-5.5, 38);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+
+    let ultimo = 0;
+    function quadro(agora) {
+      desenhar(Math.min(.05, (agora - (ultimo || agora)) / 1000));
+      ultimo = agora;
+      requestAnimationFrame(quadro);
+    }
+    requestAnimationFrame(quadro);
+    c.addEventListener('click', () => { if (arrastou) return; abrir(!aberta); });
+
+    return {
+      configurar(d) {
+        olhos = d.olhos || olhos;
+        cores = { ...cores, ...(d.cores || {}) };
+        acess = d.acessorios || {};
+      },
+      definirEmocao(nome) { emocao = nome || 'observando'; },
+    };
+  })();
 
   /* ======================= orbe neural ======================= */
   const orbe = (() => {
@@ -498,6 +620,7 @@
     if (!e || e.logs == null) estado.logs = antes.logs || [];   // logs vêm a cada 2 s: mantém os últimos
     $('#pet-nome').textContent = estado.pet || 'Pestinha';
     $('#pet-emocao').textContent = (estado.emocao || '—').toLowerCase();
+    mascote.definirEmocao(estado.emocao_chave);
     $('#st-energia').textContent = (estado.energia ?? 0) + '%';
     $('#st-estimulo').textContent = (estado.estimulacao ?? 0) + '%';
     $('#st-insatisfacao').textContent = (estado.insatisfacao ?? 0) + '%';
@@ -1058,6 +1181,9 @@
   if (window.QWebChannel && window.qt) {
     new QWebChannel(qt.webChannelTransport, canal => {
       ponte = canal.objects.ponte;
+      ponte.modo_inicial(m => aplicarModo(m !== 'livre'));
+      ponte.modo_mudou.connect(m => aplicarModo(m !== 'livre'));
+      ponte.aparencia_pet(s => mascote.configurar(JSON.parse(s)));
       ponte.estado.connect(s => aplicarEstado(JSON.parse(s)));
       ponte.aviso.connect(s => { const a = JSON.parse(s); falar(a.texto, a.origem, a.tom); });
       ponte.narrador_estado.connect(s => { pensandoNarrador = s === 'pensando'; });

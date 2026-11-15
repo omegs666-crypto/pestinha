@@ -217,3 +217,62 @@ def test_posicao_salva_mantem_o_tamanho_cheio_da_janela(tmp_path):
     ilha = web_island.WebIlha(FakeApp(tmp_path))
     assert (ilha.width(), ilha.height()) == web_island.JANELA
     ilha.close()
+
+
+def test_posicao_topo_centraliza_colada_no_topo():
+    from PySide6.QtCore import QRect
+    tela = QRect(0, 0, 1920, 1080)
+    assert web_island.posicao_topo(tela, 1040) == (440, 0)
+    assert web_island.posicao_topo(QRect(1920, 30, 1920, 1080), 1040) == (1920 + 440, 30)
+
+
+@pytest.mark.skipif(not web_island.WEB_OK, reason="sem QtWebEngine")
+def test_pilula_comeca_no_topo_e_desgruda_e_encaixa(tmp_path):
+    """Encostada no topo: só sai ao ser puxada para baixo; soltando perto da borda, volta a encostar."""
+    QApplication.instance() or QApplication([])
+    ilha = web_island.WebIlha(FakeApp(tmp_path))
+    assert ilha.modo == "topo" and ilha.y() == 0
+    ilha.mover_por(0, 300)                         # encostada: mover não faz nada
+    assert ilha.modo == "topo" and ilha.y() == 0
+    ilha.desgrudar()
+    assert ilha.modo == "livre"
+    ilha.mover_por(0, 200)
+    assert ilha.y() == 200
+    ilha.move(ilha.x(), 10)                        # soltou colada na borda de cima
+    ilha.ao_soltar()
+    assert ilha.modo == "topo" and ilha.y() == 0
+    assert json.loads((tmp_path / web_island.ARQUIVO_POSICAO).read_text(encoding="utf-8"))["modo"] == "topo"
+    ilha.desgrudar()
+    ilha.move(ilha.x(), 400)
+    ilha.ao_soltar()
+    assert ilha.modo == "livre"                    # longe do topo: fica onde foi solta
+    ilha.close()
+
+
+@pytest.mark.skipif(not web_island.WEB_OK, reason="sem QtWebEngine")
+def test_posicao_salva_livre_volta_livre_e_topo_volta_centralizada(tmp_path):
+    QApplication.instance() or QApplication([])
+    (tmp_path / web_island.ARQUIVO_POSICAO).write_text(json.dumps({"x": 600, "y": 300, "modo": "livre"}), encoding="utf-8")
+    ilha = web_island.WebIlha(FakeApp(tmp_path))
+    assert ilha.modo == "livre" and (ilha.x(), ilha.y()) != (440, 0)
+    ilha.close()
+    (tmp_path / web_island.ARQUIVO_POSICAO).write_text(json.dumps({"x": 600, "y": 300, "modo": "topo"}), encoding="utf-8")
+    ilha = web_island.WebIlha(FakeApp(tmp_path))
+    assert ilha.modo == "topo" and ilha.y() == 0
+    ilha.close()
+
+
+def test_ponte_entrega_aparencia_do_pet_e_formas_dos_olhos(tmp_path):
+    from pestinha.core.emotion import EYE_SHAPES
+    _qt()
+    dados = json.loads(Ponte(FakeApp(tmp_path)).aparencia_pet())
+    assert dados["olhos"] == EYE_SHAPES
+    assert set(dados["cores"]) == {"moldura", "casca", "tela", "olho", "brilho"}
+    assert dados["acessorios"] == {}
+
+
+def test_snapshot_traz_a_emocao_como_chave(tmp_path):
+    _qt()
+    app = FakeApp(tmp_path)
+    app.pet_state = SimpleNamespace(emotion="feliz", tone=SimpleNamespace(r={}))
+    assert Ponte(app).snapshot()["emocao_chave"] == "feliz"
