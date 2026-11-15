@@ -276,3 +276,42 @@ def test_snapshot_traz_a_emocao_como_chave(tmp_path):
     app = FakeApp(tmp_path)
     app.pet_state = SimpleNamespace(emotion="feliz", tone=SimpleNamespace(r={}))
     assert Ponte(app).snapshot()["emocao_chave"] == "feliz"
+
+
+def _js(ilha, codigo):
+    """Roda JS na página da ilha e devolve o resultado (espera o carregamento antes)."""
+    laco = QEventLoop()
+    ilha.view.loadFinished.connect(lambda _ok: laco.quit())
+    QTimer.singleShot(15_000, laco.quit)
+    laco.exec()
+    resultado = {}
+    laco2 = QEventLoop()
+
+    def coletar(valor):
+        resultado["v"] = valor
+        laco2.quit()
+
+    ilha.view.page().runJavaScript(codigo, coletar)
+    QTimer.singleShot(5_000, laco2.quit)
+    laco2.exec()
+    return resultado.get("v")
+
+
+@pytest.mark.skipif(not web_island.WEB_OK, reason="PySide6-WebEngine não instalado")
+def test_clique_em_botao_toca_o_blip(tmp_path):
+    """Cada clique em botão, cartão, orbe ou mascote gera o blip de clique (síntese Web Audio, sem arquivo de som)."""
+    _qt()
+    ilha = web_island.WebIlha(FakeApp(tmp_path))
+    ilha.show()
+    codigo = """(() => {
+        window.__sons = 0;
+        const iniciar = OscillatorNode.prototype.start;
+        OscillatorNode.prototype.start = function (...a) { window.__sons++; return iniciar.apply(this, a); };
+        document.querySelector('button[data-vista="som"]').click();
+        document.querySelector('#mascote').click();
+        document.querySelector('#gv-marcar') && document.querySelector('#gv-marcar').click();
+        return String(window.__sons);
+    })()"""
+    assert _js(ilha, codigo) == "3"
+    ilha.shutdown()
+    ilha.close()

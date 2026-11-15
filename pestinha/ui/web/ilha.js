@@ -379,6 +379,28 @@
     };
   })();
 
+  /* ======================= som de clique ======================= */
+  // Um "blip" curto sintetizado aqui: os sons do Coucou têm licença própria e não são copiados para o projeto.
+  let somCtx = null;
+  function tocarClique() {
+    try {
+      somCtx = somCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (somCtx.state === 'suspended') somCtx.resume();
+      const t = somCtx.currentTime, osc = somCtx.createOscillator(), g = somCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, t);
+      osc.frequency.exponentialRampToValueAtTime(1320, t + .06);
+      g.gain.setValueAtTime(.0001, t);
+      g.gain.exponentialRampToValueAtTime(.12, t + .008);
+      g.gain.exponentialRampToValueAtTime(.0001, t + .09);
+      osc.connect(g).connect(somCtx.destination);
+      osc.start(t); osc.stop(t + .1);
+    } catch (_) { /* sem áudio, o clique funciona do mesmo jeito */ }
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('button, input, select, .card, #orbe, #mascote, #balao, .escolha-lista li')) tocarClique();
+  }, true);
+
   /* ======================= orbe neural ======================= */
   const orbe = (() => {
     const c = $('#orbe'), ctx = c.getContext('2d');
