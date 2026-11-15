@@ -12,6 +12,8 @@ PySide6-Addons>=6.11.0
 PySide6-WebEngine>=6.11.0
 # Visualizador do audio do sistema (loopback), somente analise em tempo real
 soundcard==0.4.6
+# reconhecimento de voz local (Parakeet), como o Coucou; o modelo so e baixado quando o usuario pede
+sherpa-onnx==1.13.8
 # Atalho global no Linux; Windows usa a API do sistema e macOS usa QuickMacHotKey
 pynput>=1.7.7; sys_platform == "linux"
 # Windows: leitura das janelas e do teclado

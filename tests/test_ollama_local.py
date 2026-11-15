@@ -354,7 +354,7 @@ def test_speech_retorn_wav_do_endpoint_de_voz_do_llm(monkeypatch):
         "model": "tts-local", "input": "olá", "response_format": "wav",
     }
     assert seen["kwargs"]["allow_redirects"] is False
-    assert b"".join(audio) == b"RIFF\x24\x00\x00\x00WAVEaudio"
+    assert b"".join(audio) == b"RIFF\x09\x00\x00\x00WAVEaudio"   # tamanho RIFF corrigido (17 - 8)
 
 
 def test_speech_rejeita_audio_que_nao_e_wav(monkeypatch):
@@ -421,3 +421,98 @@ def test_cancelamento_fecha_resposta_e_libera_worker(monkeypatch):
     loop.exec()
     assert closed.is_set()
     assert _workers_ended(service)
+
+
+def _wav(dados):
+    """WAV mínimo como o Ollama manda em streaming (tamanhos 0xFFFFFFFF)."""
+    fmt = b"fmt " + (16).to_bytes(4, "little") + bytes(16)
+    return b"RIFF" + b"\xff\xff\xff\xff" + b"WAVE" + fmt + b"data" + b"\xff\xff\xff\xff" + dados
+
+
+def test_frases_quebram_em_pontuacao_e_limitam():
+    from pestinha.mind.ollama_local import MAX_FRASES, speech_chunks
+    assert speech_chunks("Oi! Tudo bem? Sim.") == ["Oi!", "Tudo bem?", "Sim."]
+    assert speech_chunks("sem ponto final") == ["sem ponto final"]
+    assert len(speech_chunks(" ".join(f"f{i}." for i in range(30)))) == MAX_FRASES
+
+
+def test_cabecalho_wav_de_streaming_e_corrigido():
+    from pestinha.mind.ollama_local import fix_wav_header
+    wav = fix_wav_header(_wav(b"abcd"))
+    assert int.from_bytes(wav[4:8], "little") == len(wav) - 8
+    pos = wav.index(b"data")
+    assert int.from_bytes(wav[pos + 4:pos + 8], "little") == 4
+
+
+def test_wavs_de_frases_viram_um_so():
+    from pestinha.mind.ollama_local import concat_wavs, fix_wav_header
+    um = concat_wavs([fix_wav_header(_wav(b"ab")), fix_wav_header(_wav(b"cd"))])
+    pos = um.index(b"data")
+    assert um[pos + 8:] == b"abcd"
+    assert int.from_bytes(um[pos + 4:pos + 8], "little") == 4
+    assert int.from_bytes(um[4:8], "little") == len(um) - 8
+
+
+class _Show:
+    status_code = 200
+
+    def __init__(self, caps):
+        self.caps = caps
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"capabilities": self.caps}
+
+    def close(self):
+        pass
+
+
+def test_escolhe_o_modelo_com_capacidade_de_voz(monkeypatch):
+    from pestinha.mind import ollama_local
+    ollama_local._CAPACIDADES.clear()
+    pedidos = []
+
+    class Fala:
+        status_code = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, _n):
+            return iter([_wav(b"zz")])
+
+    def fake_post(url, json, **kwargs):
+        if url.endswith("/api/show"):
+            return _Show(["completion", "speech"] if json["model"] == "lfm3-omni:latest" else ["completion"])
+        pedidos.append(json["model"])
+        return Fala()
+
+    _mock_session(monkeypatch, post=fake_post)
+    task = ollama_local._OllamaTask("speech", model="qwen2.5:3b", speech_text="Oi. Tchau.",
+                                    voice_candidates=["glm4:latest", "lfm3-omni:latest"])
+    audio, erros = [], []
+    task.signals.speech_audio.connect(audio.append)
+    task.signals.error.connect(erros.append)
+    task.run()
+    assert erros == []
+    assert pedidos == ["lfm3-omni:latest", "lfm3-omni:latest"]      # uma requisição por frase, no modelo com voz
+    assert audio and audio[0][audio[0].index(b"data") + 8:] == b"zzzz"
+
+
+def test_sem_modelo_de_voz_avisa(monkeypatch):
+    from pestinha.mind import ollama_local
+    ollama_local._CAPACIDADES.clear()
+    _mock_session(monkeypatch, post=lambda url, json, **k: _Show(["completion"]))
+    task = ollama_local._OllamaTask("speech", model="qwen2.5:3b", speech_text="Oi.")
+    erros = []
+    task.signals.error.connect(erros.append)
+    task.run()
+    assert erros and "voz" in erros[0].lower()

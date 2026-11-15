@@ -17,6 +17,7 @@ from ..mind.chat_voice import ChatVoice
 from ..mind.convivencia import ler_persona, prompt_fala
 from ..mind.narrador import Narrador, escolher_modelo, limpar_frase, prompt_insight
 from ..mind.ollama_local import OllamaLocal
+from ..sense import ouvir as ouvir_mod
 from ..sense.audio import CapturaLoopback
 
 PERSISTIVEIS = {"layout", "diagrama"}
@@ -55,6 +56,8 @@ class Ponte(QObject):
     erro = Signal(str)
     transcrito = Signal(str)
     voz_estado = Signal(str)
+    voz_modelo = Signal(str)        # "pronto", "ausente", "baixando", erro
+    voz_download = Signal(int)
 
     def __init__(self, app, parent=None):
         super().__init__(parent)
@@ -126,6 +129,11 @@ class Ponte(QObject):
         self._ollama_narrador.shutdown()
         self._ollama_falas.shutdown()
         self._voz.shutdown()
+        for nome in ("_ouvinte", "_baixador"):
+            tarefa = getattr(self, nome, None)
+            if tarefa is not None and tarefa.isRunning():
+                tarefa.requestInterruption()
+                tarefa.wait(1500)
 
     # ----- falas do pet (balões) -----
     def anunciar(self, texto, tom="calmo", origem="pet"):
@@ -355,8 +363,9 @@ class Ponte(QObject):
     def falar_resposta(self, modelo, texto):
         """Voz do próprio LLM (/v1/audio/speech); sem ela, cai na voz do sistema."""
         self._ultimo_texto = str(texto)[:2_000]
-        if modelo:
-            self._ollama.speak_async(modelo, self._ultimo_texto)
+        candidatos = [m for m in self._modelos if m != modelo]   # outro modelo instalado pode ter voz (ex.: lfm3-omni)
+        if modelo or candidatos:
+            self._ollama.speak_async(modelo or candidatos[0], self._ultimo_texto, candidatos)
         else:
             self._voz.speak(self._ultimo_texto)
 
@@ -369,7 +378,34 @@ class Ponte(QObject):
     # ----- voz de entrada -----
     @Slot()
     def ouvir(self):
-        self._voz.listen(seconds=12)
+        """Ouve uma fala pelo microfone e transcreve com o Parakeet local (como o Coucou)."""
+        if not ouvir_mod.pronto():
+            self.voz_modelo.emit("ausente")
+            return
+        if getattr(self, "_ouvinte", None) is not None and self._ouvinte.isRunning():
+            self._ouvinte.requestInterruption()
+            return
+        self._ouvinte = ouvir_mod.Ouvinte(self)
+        self._ouvinte.estado.connect(self.voz_estado)
+        self._ouvinte.transcrito.connect(self.transcrito)
+        self._ouvinte.erro.connect(self.erro)
+        self._ouvinte.start()
+
+    @Slot(result=str)
+    def estado_modelo_voz(self):
+        return json.dumps({"pronto": ouvir_mod.pronto(), "tamanho_mb": ouvir_mod.TAMANHO_MB})
+
+    @Slot()
+    def baixar_modelo_voz(self):
+        """Baixa o Parakeet (~670 MB) só quando você pede; o progresso vai para a ilha."""
+        if getattr(self, "_baixador", None) is not None and self._baixador.isRunning():
+            return
+        self._baixador = ouvir_mod.Baixador(self)
+        self._baixador.progresso.connect(self.voz_download)
+        self._baixador.concluido.connect(lambda: self.voz_modelo.emit("pronto"))
+        self._baixador.erro.connect(self.voz_modelo)
+        self.voz_modelo.emit("baixando")
+        self._baixador.start()
 
     # ----- áudio do sistema (loopback) -----
     @Slot(bool)

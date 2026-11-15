@@ -170,6 +170,8 @@
           </div>
           <div class="aviso-chat" id="aviso-nuvem" hidden>Este modelo roda na nuvem do Ollama: suas mensagens saem do PC.</div>
           <div class="erro" id="erro" role="alert" hidden></div>
+          <div class="aviso-chat" id="voz-baixar" hidden>Para eu ouvir sua voz, baixe o modelo local de reconhecimento (Parakeet, ~<span id="voz-mb">670</span> MB, uma vez só, roda offline).
+            <button type="button" class="pilula" id="voz-baixar-bt">Baixar</button> <span id="voz-progresso"></span></div>
           <div class="mensagens" id="mensagens"></div>
           <div class="composer">
             <textarea id="entrada" placeholder="Pergunte ao modelo local… (Ctrl+Enter envia)"></textarea>

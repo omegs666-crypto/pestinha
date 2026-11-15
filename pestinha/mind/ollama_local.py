@@ -18,7 +18,8 @@ STREAM_FLUSH_S = 0.04
 STREAM_READ_TIMEOUT_S = 30
 MAX_SPEECH_TEXT = 4_000
 MAX_SPEECH_BYTES = 8_000_000
-SPEECH_TIMEOUT_S = 60
+SPEECH_TIMEOUT_S = 180            # por frase: modelos omni pequenos podem demorar
+MAX_FRASES = 12
 
 
 def normalize_models(response):
@@ -100,6 +101,92 @@ def _error_message(error):
     return f"Falha no Ollama local: {str(error)[:240]}"
 
 
+# ---------------- voz do LLM (como o Coucou faz com o lfm3-omni) ----------------
+
+_CAPACIDADES = {}
+
+
+def capacidades(session, host, modelo):
+    """O que o modelo sabe fazer (`/api/show` → capabilities); vazio se o servidor não informar."""
+    if modelo in _CAPACIDADES:
+        return _CAPACIDADES[modelo]
+    caps = set()
+    try:
+        resposta = session.post(f"{host}/api/show", json={"model": modelo}, timeout=(2, 10),
+                                headers=_auth_headers(), allow_redirects=False)
+        try:
+            _reject_redirect(resposta)
+            resposta.raise_for_status()
+            lista = resposta.json().get("capabilities")
+            caps = {str(c) for c in lista} if isinstance(lista, list) else set()
+        finally:
+            resposta.close()
+    except Exception:
+        caps = set()
+    if caps:
+        _CAPACIDADES[modelo] = caps
+    return caps
+
+
+def speech_chunks(texto):
+    """Texto quebrado em frases (. ! ? quebra de linha): uma voz omni pequena muda de timbre no meio
+    de um texto longo; uma requisição por frase mantém a voz igual. No máximo MAX_FRASES pedaços."""
+    pedacos, inicio = [], 0
+    for fim, letra in enumerate(texto):
+        if letra in ".!?\n":
+            pedaco = texto[inicio:fim + 1].strip()
+            if pedaco:
+                pedacos.append(pedaco)
+            inicio = fim + 1
+    resto = texto[inicio:].strip()
+    if resto:
+        pedacos.append(resto)
+    if len(pedacos) > MAX_FRASES:
+        pedacos = pedacos[:MAX_FRASES - 1] + [" ".join(pedacos[MAX_FRASES - 1:])]
+    return pedacos
+
+
+def _inicio_dos_dados(wav):
+    pos = 12
+    while pos + 8 <= len(wav):
+        if wav[pos:pos + 4] == b"data":
+            return pos
+        tamanho = int.from_bytes(wav[pos + 4:pos + 8], "little")
+        if tamanho > len(wav):
+            return None
+        pos += 8 + tamanho + (tamanho & 1)
+    return None
+
+
+def fix_wav_header(wav):
+    """O Ollama manda o WAV em streaming com tamanhos 0xFFFFFFFF; com o arquivo inteiro, corrige-os."""
+    wav = bytearray(wav)
+    if len(wav) < 12 or wav[0:4] != b"RIFF" or wav[8:12] != b"WAVE":
+        return bytes(wav)
+    wav[4:8] = (len(wav) - 8).to_bytes(4, "little")
+    dados = _inicio_dos_dados(wav)
+    if dados is not None:
+        wav[dados + 4:dados + 8] = (len(wav) - dados - 8).to_bytes(4, "little")
+    return bytes(wav)
+
+
+def concat_wavs(partes):
+    """Vários WAVs de uma frase cada → um só: os dados em sequência sob o cabeçalho do primeiro."""
+    if not partes:
+        return b""
+    cabeca = _inicio_dos_dados(partes[0])
+    if cabeca is None or len(partes) == 1:
+        return bytes(partes[0])
+    out = bytearray(partes[0][:cabeca + 8])
+    for wav in partes:
+        dados = _inicio_dos_dados(wav)
+        if dados is not None:
+            out += wav[dados + 8:]
+    out[4:8] = (len(out) - 8).to_bytes(4, "little")
+    out[cabeca + 4:cabeca + 8] = (len(out) - cabeca - 8).to_bytes(4, "little")
+    return bytes(out)
+
+
 class _TaskSignals(QObject):
     models = Signal(object)
     token = Signal(str)
@@ -113,10 +200,11 @@ class _TaskSignals(QObject):
 class _OllamaTask:
     """Uma chamada Ollama isolada numa thread daemon limitada pelo serviço."""
 
-    def __init__(self, operation, *, model=None, messages=None, speech_text=None):
+    def __init__(self, operation, *, model=None, messages=None, speech_text=None, voice_candidates=()):
         super().__init__()
         self.operation = operation
         self.model = model
+        self.voice_candidates = tuple(m for m in voice_candidates if isinstance(m, str) and m.strip())[:256]
         self.messages = normalize_messages(messages)
         self.speech_text = (
             str(speech_text).strip()[:MAX_SPEECH_TEXT]
@@ -147,6 +235,44 @@ class _OllamaTask:
     def _host(self):
         return OLLAMA_HOST.rstrip("/")
 
+    def _modelo_com_voz(self, session, host):
+        """O primeiro modelo que sabe falar (capacidade 'speech'): o pedido, depois os instalados."""
+        candidatos = list(dict.fromkeys(m for m in (self.model, *self.voice_candidates) if m))
+        algum_informado = False
+        for modelo in candidatos:
+            caps = capacidades(session, host, modelo)
+            algum_informado = algum_informado or bool(caps)
+            if "speech" in caps:
+                return modelo
+        if candidatos and not algum_informado:
+            return candidatos[0]        # servidor sem /api/show: tenta o modelo pedido
+        raise RuntimeError("Nenhum modelo com voz instalado. Instale um, por exemplo: ollama pull lfm3-omni")
+
+    def _falar_frase(self, session, host, modelo, frase):
+        """Uma frase falada pelo modelo: os bytes WAV como vieram (com limite de tamanho)."""
+        chunks, total = [], 0
+        with session.post(
+            f"{host}/v1/audio/speech",
+            json={"model": modelo, "input": frase, "response_format": "wav"},
+            stream=True,
+            timeout=(2, SPEECH_TIMEOUT_S),
+            headers=_auth_headers(),
+            allow_redirects=False,
+        ) as response:
+            self._set_response(response)
+            _reject_redirect(response)
+            response.raise_for_status()
+            for chunk in response.iter_content(65_536):
+                if self._cancelled.is_set():
+                    break
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > MAX_SPEECH_BYTES:
+                    raise RuntimeError("A resposta de áudio excedeu o limite local.")
+                chunks.append(chunk)
+        return b"".join(chunks)
+
     def run(self):
         self.thread_ident = threading.get_ident()
         buffered = []
@@ -175,41 +301,19 @@ class _OllamaTask:
                 return
 
             if self.operation == "speech":
-                # TTS do próprio LLM: endpoint OpenAI-compatible /v1/audio/speech.
+                # Voz do próprio LLM (/v1/audio/speech), do jeito do Coucou: o modelo que sabe falar,
+                # uma requisição por frase e o cabeçalho WAV corrigido.
                 if not self.speech_text:
                     raise ValueError("Texto de voz vazio.")
                 if self._cancelled.is_set():
                     return
-                payload = {
-                    "model": self.model,
-                    "input": self.speech_text,
-                    "response_format": "wav",
-                }
-                chunks = []
-                total = 0
-                with session.post(
-                    f"{host}/v1/audio/speech",
-                    json=payload,
-                    stream=True,
-                    timeout=(2, SPEECH_TIMEOUT_S),
-                    headers=_auth_headers(),
-                    allow_redirects=False,
-                ) as response:
-                    self._set_response(response)
-                    _reject_redirect(response)
-                    response.raise_for_status()
-                    for chunk in response.iter_content(65_536):
-                        if self._cancelled.is_set():
-                            break
-                        if not chunk:
-                            continue
-                        total += len(chunk)
-                        if total > MAX_SPEECH_BYTES:
-                            raise RuntimeError(
-                                "A resposta de áudio excedeu o limite local."
-                            )
-                        chunks.append(chunk)
-                audio = b"".join(chunks)
+                modelo = self._modelo_com_voz(session, host)
+                partes = []
+                for frase in speech_chunks(self.speech_text):
+                    if self._cancelled.is_set():
+                        return
+                    partes.append(fix_wav_header(self._falar_frase(session, host, modelo, frase)))
+                audio = concat_wavs(partes)
                 if self._cancelled.is_set():
                     return
                 if not audio.startswith(b"RIFF") or audio[8:12] != b"WAVE":
@@ -333,8 +437,8 @@ class OllamaLocal(QObject):
         task.signals.error.connect(self.error)
         self._submit(task)
 
-    def speak_async(self, model, text):
-        """Pede áudio WAV ao /v1/audio/speech do Ollama; o resultado chega por sinal."""
+    def speak_async(self, model, text, candidates=()):
+        """Pede áudio WAV ao /v1/audio/speech do Ollama; `candidates` são outros modelos que podem ter voz."""
         if not isinstance(model, str) or not model.strip():
             self.speech_failed.emit("Nenhum modelo de voz local selecionado.")
             return
@@ -342,7 +446,7 @@ class OllamaLocal(QObject):
         if not clean:
             return
         task = _OllamaTask(
-            "speech", model=model.strip()[:200], speech_text=clean
+            "speech", model=model.strip()[:200], speech_text=clean, voice_candidates=candidates
         )
         task.signals.speech_audio.connect(self.speech_ready)
         task.signals.error.connect(self.speech_failed)

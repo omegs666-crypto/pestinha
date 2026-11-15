@@ -37,6 +37,16 @@ Ele **não** lê o conteúdo nem o título de nenhuma janela, página, documento
   usa o sintetizador local disponível (`say`/`spd-say`). Entrada por microfone
   está disponível nesta implementação no Windows.
 
+### Sua voz
+
+- O botão **Falar** do chat usa o microfone só enquanto você fala (para sozinho após 1,2 s de silêncio
+  ou 12 s). O áudio fica na memória e **nunca é gravado em disco**.
+- A transcrição é feita no PC pelo Parakeet (NVIDIA) via sherpa-onnx. O modelo (~670 MB) só é baixado
+  quando você clica em **Baixar** na ilha, vem do Hugging Face numa revisão fixa, é conferido por SHA-256
+  e fica em `%LOCALAPPDATA%\Pestinha\Models`. Depois disso funciona offline.
+- A resposta falada usa a voz do modelo do Ollama local (`/v1/audio/speech`, por exemplo lfm3-omni); se
+  nenhum modelo instalado tiver voz, usa a voz do Windows.
+
 ## O que ele grava
 
 Tudo fica na pasta de dados, mostrada na tela de configurações. Ela é `memory/` ao lado do programa ou, no

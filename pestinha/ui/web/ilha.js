@@ -892,6 +892,17 @@
     else mostrarErro('Nenhum modelo instalado encontrado no Ollama local.', true);
   }
 
+  // Voz: perguntou falando, a resposta também é falada (voz do LLM; sem ela, a do Windows)
+  let veioDeVoz = false;
+  function aoModeloVoz(s) {
+    const caixa = $('#voz-baixar');
+    if (s === 'ausente') { caixa.hidden = false; $('#voz-baixar-bt').disabled = false; $('#voz-progresso').textContent = ''; }
+    else if (s === 'baixando') { caixa.hidden = false; $('#voz-baixar-bt').disabled = true; $('#voz-progresso').textContent = '0%'; }
+    else if (s === 'pronto') { caixa.hidden = true; falar('Modelo de voz pronto. Clique em Falar e pergunte.', 'sistema', 'calmo'); }
+    else { $('#voz-baixar-bt').disabled = false; mostrarErro(s); }
+  }
+  $('#voz-baixar-bt').addEventListener('click', () => { if (ponte) ponte.baixar_modelo_voz(); });
+
   function aoToken(t) {
     if (!bolhaAtual) return;
     textoAtual += t; bolhaAtual.textContent = textoAtual;
@@ -902,13 +913,13 @@
     if (bolhaAtual && textoAtual) {
       historico.push({ role: 'assistant', content: textoAtual });
       historico = historico.slice(-MAX_HISTORICO);
-      if ($('#ler').checked && ponte) {
-        const voz = modelos.find(m => /tts|kokoro|piper|speech|f5-|chattts/i.test(m)) || $('#modelo').value;
-        ponte.falar_resposta(voz, textoAtual);
+      if (($('#ler').checked || veioDeVoz) && ponte) {
+        ponte.falar_resposta($('#modelo').value, textoAtual);   // o Python escolhe o modelo que sabe falar
       }
       if (!aberta || vista !== 'chat') falar('Respondi no chat, quer dar uma olhada?', 'sistema', 'calmo');
     } else if (bolhaAtual) bolhaAtual.remove();
     bolhaAtual = null;
+    veioDeVoz = false;
     setOcupado(false);
   }
 
@@ -1056,8 +1067,10 @@
       ponte.token.connect(aoToken);
       ponte.chat_fim.connect(aoFim);
       ponte.erro.connect(aoErro);
-      ponte.transcrito.connect(texto => { entrada.value = texto; enviarPelaCaixa(); });
-      ponte.voz_estado.connect(s => { $('#ouvir').textContent = s === 'ouvindo' ? 'Ouvindo…' : 'Falar'; });
+      ponte.transcrito.connect(texto => { veioDeVoz = true; entrada.value = texto; enviarPelaCaixa(); });
+      ponte.voz_estado.connect(s => { $('#ouvir').textContent = s === 'ouvindo' ? 'Ouvindo… (clique p/ parar)' : s === 'transcrevendo' ? 'Entendendo…' : 'Falar'; });
+      ponte.voz_modelo.connect(aoModeloVoz);
+      ponte.voz_download.connect(p => { $('#voz-progresso').textContent = p + '%'; });
       ponte.obter_estado(s => aplicarEstado(JSON.parse(s)));
       ponte.listar_modelos();
       ponte.carregar('reacoes', t => reacoes.carregar(t));
