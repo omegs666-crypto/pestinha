@@ -192,10 +192,10 @@ ul, ol { list-style: none; }
 .pa-a { align-items: center; justify-content: center; flex-direction: row; gap: 16px; }
 .pa-a-anillo { position: relative; flex: 0 1 auto; width: min(100%, 100cqh - 70px, 150px); aspect-ratio: 1; max-height: 100%; }
 .pa-a-anillo svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.pa-a-anillo circle { fill: none; stroke-width: 11; }
+.pa-a-anillo circle { fill: none; stroke-width: 9; }
 .pa-a-pista { stroke: var(--pa-azul-suave); }
 .pa-a-arco { stroke: var(--pa-azul); stroke-linecap: round; stroke-dasharray: 314; stroke-dashoffset: calc(314 * (1 - var(--p))); }
-.pa-a-num { position: absolute; inset: 0; display: grid; place-items: center; font: 400 clamp(14px, 11cqw, 28px)/1 var(--pa-cifras); letter-spacing: -.05em; }
+.pa-a-num { position: absolute; inset: 0; display: grid; place-items: center; font: 400 clamp(11px, 12cqmin, 26px)/1 var(--pa-cifras); letter-spacing: -.05em; white-space: nowrap; }
 @container pa (max-width: 200px) { .pa-grip { display: none; } }
 .pa-a-leyenda { display: none; gap: 10px; font: 500 13px/1 var(--pa-sans); color: var(--pa-suave); }
 .pa-a-leyenda li { display: flex; align-items: center; gap: 8px; }
@@ -323,6 +323,9 @@ ul, ol { list-style: none; }
 :root[data-tema="oscuro"] .pa-etiq { order: 2; }
 :root[data-tema="oscuro"] .pa-grip { order: 3; }
 :root[data-tema="oscuro"] .pa-x { order: 4; }
+/* o conteúdo não vaza para fora do widget enquanto ele muda de tamanho; a alça tem espaço reservado */
+.pa-w { overflow: hidden; }
+.pa-cuerpo-w { padding-bottom: 24px; }
 :root[data-tema="oscuro"] .pa-w:hover { box-shadow: 0 0 0 1px rgba(69, 230, 255, .3), 0 18px 34px -20px rgba(0, 0, 0, .7); }
 :root[data-tema="oscuro"] * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .18) transparent; }
 /* a área tracejada de espaço livre só aparece enquanto se arrasta um widget */

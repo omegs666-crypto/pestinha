@@ -315,3 +315,27 @@ def test_clique_em_botao_toca_o_blip(tmp_path):
     assert _js(ilha, codigo) == "3"
     ilha.shutdown()
     ilha.close()
+
+
+@pytest.mark.skipif(not web_island.WEB_OK, reason="PySide6-WebEngine não instalado")
+def test_grade_termina_arrasto_quando_o_soltar_se_perde(tmp_path):
+    """Se o botão é solto fora da janela, o próximo movimento sem botão encerra o arrasto (sem encaixe preso)."""
+    _qt()
+    ilha = web_island.WebIlha(FakeApp(tmp_path))
+    ilha.show()
+    _js(ilha, "document.querySelector('#mascote').click(); document.querySelector('button[data-vista=\"grade\"]').click(); 1")
+    espera = QEventLoop()
+    QTimer.singleShot(1500, espera.quit)
+    espera.exec()
+    codigo = """(() => {
+        const d = document.querySelector('iframe[data-quadro="parrilla"]').contentDocument;
+        const cab = d.querySelector('.pa-w .pa-cab'), r = cab.getBoundingClientRect();
+        cab.dispatchEvent(new PointerEvent('pointerdown', { clientX: r.left + 20, clientY: r.top + 10, bubbles: true, button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        d.dispatchEvent(new PointerEvent('pointermove', { clientX: r.left + 80, clientY: r.top + 40, buttons: 1, bubbles: true, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        const preso = d.querySelector('.pa-caja').classList.contains('is-arrastra');
+        d.dispatchEvent(new PointerEvent('pointermove', { clientX: r.left + 90, clientY: r.top + 40, buttons: 0, bubbles: true, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        return preso + ':' + d.querySelector('.pa-caja').classList.contains('is-arrastra');
+    })()"""
+    assert _js(ilha, codigo) == "true:false"
+    ilha.shutdown()
+    ilha.close()

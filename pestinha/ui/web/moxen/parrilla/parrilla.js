@@ -300,6 +300,9 @@
     function muevePuntero(ev) {
       const a = S.arr;
       if (!a || ev.pointerId !== a.pid && a.pid != null && a.tipo !== 'nuevo') return;
+      // el puntero volvió sin botón: el soltar se perdió (la ventana del Núcleo deja de recibir el ratón
+      // fuera de su área), así que se termina el arrastre aquí, sin dejar el hueco ni el encaje pegados
+      if (ev.buttons === 0 && ev.pointerType === 'mouse') return sueltaPuntero(ev);
       if (a.tipo === 'tam') return mueveTamano(ev);
       if (a.tipo === 'nuevo') return muevePaleta(ev);
       const c = celda(ev, a, a.it.w);
