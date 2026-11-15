@@ -7,11 +7,12 @@ com progresso ao vivo: os pesos, a saída e a curva de perda se atualizam enquan
 Pausar guarda o ponto alcançado; Reiniciar volta aos pesos iniciais.
 """
 
+import math
 import threading
 
 import numpy as np
-from PySide6.QtCore import QObject, QRectF, QRunnable, QThreadPool, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtCore import QObject, QPointF, QRectF, QRunnable, QThreadPool, Qt, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QGridLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
 )
@@ -178,42 +179,166 @@ class RedeWidget(QWidget):
 
 
 class CurvaPerda(QWidget):
-    """Curva da perda do treino com valores de referência."""
+    """Curva da perda em escala logarítmica, com animação suave, ponto pulsando durante o treino e leitura ao passar o mouse.
+
+    Anima só enquanto há algo se movendo ou treinando, e só com o painel visível: fora disso o timer para."""
+
+    QUADRO_MS = 33                      # ~30 quadros por segundo, enquanto anima
+    SUAVIZA = 0.22                      # fração do caminho até o valor novo a cada quadro
 
     def __init__(self):
         super().__init__()
         self.perdas = []
-        self.setMinimumHeight(90)
+        self._alvo = []                 # log10 da perda (valores reais)
+        self._mostra = []               # log10 exibido (interpolado até o alvo)
+        self._pulsar = False
+        self._fase = 0.0
+        self._mouse_x = None
+        self.setMinimumHeight(110)
+        self.setMouseTracking(True)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self._timer = QTimer(self)
+        self._timer.setInterval(self.QUADRO_MS)
+        self._timer.timeout.connect(self._quadro)
 
     def definir(self, perdas):
         self.perdas = [float(v) for v in perdas[-600:] if np.isfinite(v)]
+        self._alvo = [math.log10(max(v, 1e-12)) for v in self.perdas]
+        if len(self._mostra) > len(self._alvo):
+            self._mostra = self._mostra[:len(self._alvo)]
+        while len(self._mostra) < len(self._alvo):          # ponto novo nasce do último exibido e cresce até o alvo
+            self._mostra.append(self._mostra[-1] if self._mostra else self._alvo[len(self._mostra)])
+        self._ligar()
         self.update()
+
+    def pulsar(self, ativo):
+        """Liga o pulso do último ponto enquanto o treino roda."""
+        self._pulsar = bool(ativo)
+        self._ligar()
+
+    def _ligar(self):
+        movendo = any(abs(a - m) > 1e-4 for a, m in zip(self._alvo, self._mostra))
+        if self.isVisible() and (self._pulsar or movendo):
+            if not self._timer.isActive():
+                self._timer.start()
+        else:
+            self._timer.stop()
+
+    def _quadro(self):
+        self._fase += self.QUADRO_MS / 1000.0
+        mexeu = False
+        for i, alvo in enumerate(self._alvo):
+            diff = alvo - self._mostra[i]
+            if abs(diff) > 1e-4:
+                self._mostra[i] += diff * self.SUAVIZA
+                mexeu = True
+            else:
+                self._mostra[i] = alvo
+        if not mexeu and not self._pulsar:
+            self._timer.stop()
+        self.update()
+
+    def hideEvent(self, event):
+        self._timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._ligar()
+
+    def leaveEvent(self, event):
+        self._mouse_x = None
+        self.update()
+        super().leaveEvent(event)
+
+    def mouseMoveEvent(self, event):
+        self._mouse_x = event.position().x()
+        self.update()
+
+    def _area(self):
+        """Retângulo do gráfico, descontando eixos e rótulos."""
+        return QRectF(44, 20, self.width() - 56, self.height() - 42)
 
     def paintEvent(self, _ev):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
         tema.cartao(p, QRectF(0, 0, w, h), raio=10)
+        area = self._area()
         p.setFont(tema.fonte(8))
-        p.setPen(tema.FRACO)
-        if len(self.perdas) < 2:
+        if len(self._mostra) < 2:
+            p.setPen(tema.FRACO)
             p.drawText(self.rect(), Qt.AlignCenter, "Treine para ver a perda cair")
             p.end()
             return
-        topo, base, esq = 22, h - 12, 12
-        lo, hi = min(self.perdas), max(self.perdas)
-        span = max(1e-12, hi - lo)
-        p.drawText(esq, 14, f"perda {self.perdas[-1]:.6f}")
-        p.drawText(w - 110, 14, f"máx {hi:.4f}  mín {lo:.4f}")
-        p.setPen(QPen(tema.VERDE, 1.6))
-        n = len(self.perdas)
-        for i in range(1, n):
-            x0 = esq + (w - 2 * esq) * (i - 1) / (n - 1)
-            x1 = esq + (w - 2 * esq) * i / (n - 1)
-            y0 = base - (self.perdas[i - 1] - lo) / span * (base - topo)
-            y1 = base - (self.perdas[i] - lo) / span * (base - topo)
-            p.drawLine(int(x0), int(y0), int(x1), int(y1))
+        lo = min(self._mostra) - 0.05
+        hi = max(self._mostra) + 0.05
+        span = max(1e-6, hi - lo)
+        n = len(self._mostra)
+
+        def xy(i, v):
+            return (area.left() + area.width() * i / (n - 1),
+                    area.bottom() - (v - lo) / span * area.height())
+
+        # grade horizontal com valores em escala real (potências de 10)
+        for decada in range(math.floor(lo), math.ceil(hi) + 1):      # marcas em potências de 10
+            if not lo <= decada <= hi:
+                continue
+            _, y = xy(0, decada)
+            p.setPen(QPen(QColor(255, 255, 255, 16), 1))
+            p.drawLine(int(area.left()), int(y), int(area.right()), int(y))
+            p.setPen(tema.FRACO)
+            p.drawText(QRectF(0, y - 7, 40, 14), Qt.AlignRight | Qt.AlignVCenter, f"1e{decada}")
+        p.drawText(QRectF(area.left(), h - 16, area.width(), 14), Qt.AlignLeft, "épocas")
+        p.drawText(QRectF(area.left(), h - 16, area.width(), 14), Qt.AlignRight, str(len(self.perdas)))
+
+        # área preenchida com degradê e a linha
+        pts = [xy(i, v) for i, v in enumerate(self._mostra)]
+        caminho = QPainterPath(QPointF(pts[0][0], area.bottom()))
+        for x, y in pts:
+            caminho.lineTo(x, y)
+        caminho.lineTo(pts[-1][0], area.bottom())
+        caminho.closeSubpath()
+        degrade = QLinearGradient(0, area.top(), 0, area.bottom())
+        degrade.setColorAt(0, QColor(tema.VERDE.red(), tema.VERDE.green(), tema.VERDE.blue(), 90))
+        degrade.setColorAt(1, QColor(tema.VERDE.red(), tema.VERDE.green(), tema.VERDE.blue(), 0))
+        p.fillPath(caminho, QBrush(degrade))
+        p.setPen(QPen(tema.VERDE, 1.8))
+        p.setBrush(Qt.NoBrush)
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            p.drawLine(QPointF(x0, y0), QPointF(x1, y1))
+
+        # ponto final, com brilho pulsando durante o treino
+        ux, uy = pts[-1]
+        if self._pulsar:
+            raio = 6 + 3 * (0.5 + 0.5 * math.sin(self._fase * 6))
+            halo = QColor(tema.VERDE)
+            halo.setAlpha(70)
+            p.setPen(Qt.NoPen)
+            p.setBrush(halo)
+            p.drawEllipse(QPointF(ux, uy), raio, raio)
+        p.setBrush(tema.VERDE)
+        p.setPen(QPen(tema.INK, 1))
+        p.drawEllipse(QPointF(ux, uy), 3.5, 3.5)
+
+        # leitura ao passar o mouse
+        if self._mouse_x is not None and area.left() <= self._mouse_x <= area.right():
+            i = round((self._mouse_x - area.left()) / area.width() * (n - 1))
+            i = max(0, min(n - 1, i))
+            x, y = pts[i]
+            p.setPen(QPen(QColor(255, 255, 255, 60), 1))
+            p.drawLine(int(x), int(area.top()), int(x), int(area.bottom()))
+            p.setBrush(tema.VERDE)
+            p.setPen(QPen(tema.INK, 1))
+            p.drawEllipse(QPointF(x, y), 3.5, 3.5)
+            texto = f"época {i + 1} · perda {self.perdas[i]:.6f}"
+            p.setPen(tema.TEXTO)
+            largura = 190
+            tx = min(max(x - largura / 2, area.left()), area.right() - largura)
+            p.drawText(QRectF(tx, 2, largura, 16), Qt.AlignCenter, texto)
+        else:
+            p.setPen(tema.TEXTO)
+            p.drawText(QRectF(area.left(), 2, area.width(), 16), Qt.AlignRight, f"perda {self.perdas[-1]:.6f}")
         p.end()
 
 
@@ -329,6 +454,7 @@ class LabMLP(FloatingWidget):
         task.signals.liberado.connect(self._treino_liberado)
         self._treino_task = task
         self.btn_treinar.setText("Pausar")
+        self.curva.pulsar(True)
         self.btn_reiniciar.setEnabled(False)
         self.rotulo.setText("Treinando em segundo plano…")
         self._pool.start(task)
@@ -365,6 +491,7 @@ class LabMLP(FloatingWidget):
 
     def _treino_liberado(self, _task):
         self._treino_task = None
+        self.curva.pulsar(False)
         self.btn_treinar.setText(f"Treinar {EPOCAS_LOTE} épocas")
         self.btn_reiniciar.setEnabled(True)
 

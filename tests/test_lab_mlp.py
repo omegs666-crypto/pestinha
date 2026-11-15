@@ -78,3 +78,37 @@ def test_pesos_com_forma_errada_nao_sao_aceitos():
     assert lab_mlp._pesos_validos(pesos)
     pesos["W2"] = np.zeros((3, 4))
     assert not lab_mlp._pesos_validos(pesos)
+
+
+def test_curva_anima_ate_assentar_e_para(tmp_path):
+    _qt()
+    curva = lab_mlp.CurvaPerda()
+    curva.resize(400, 120)
+    curva.show()
+    curva.definir([1.0, 0.1, 0.01, 0.001])
+    assert curva._timer.isActive()
+    for _ in range(400):
+        curva._quadro()
+    assert not curva._timer.isActive()
+    assert curva._mostra == pytest.approx(curva._alvo, abs=1e-4)
+    curva.close()
+
+
+def test_curva_pulso_para_quando_some(tmp_path):
+    _qt()
+    curva = lab_mlp.CurvaPerda()
+    curva.show()
+    curva.pulsar(True)
+    assert curva._timer.isActive()
+    curva.hide()
+    assert not curva._timer.isActive()
+    curva.close()
+
+
+def test_curva_aceita_vazio_e_valores_invalidos():
+    _qt()
+    curva = lab_mlp.CurvaPerda()
+    curva.definir([])
+    curva.definir([float("nan"), 0.5, float("inf"), 0.25])
+    assert curva.perdas == [0.5, 0.25]
+    curva.close()
