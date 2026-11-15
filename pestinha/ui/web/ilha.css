@@ -139,7 +139,7 @@ button, select, textarea, input { font: inherit; color: inherit; }
 
 .pilula { border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .05); color: var(--suave);
   border-radius: 999px; padding: 6px 12px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
-  transition: background .2s, color .2s, transform .3s cubic-bezier(.2, .9, .2, 1.4); }
+  transition: transform .2s cubic-bezier(.3, 1.2, .4, 1), background .18s, border-color .18s, color .18s, box-shadow .18s; }
 .pilula:hover { color: var(--texto); background: rgba(255, 255, 255, .10); transform: translateY(-1px); }
 .pilula.ligada { color: #0a0b12; background: var(--a1); border-color: transparent; }
 .pilula:disabled { opacity: .4; cursor: default; transform: none; }

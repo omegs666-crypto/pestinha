@@ -69,8 +69,26 @@
     ponte.definir_regiao(Math.round(x), 0, Math.round(w + margem * 2), Math.round(h + 6 + margem * 2));
   }
 
+  // Valores do Coucou (island/island.ts + core/anim.ts): abrir é uma mola com resposta 0,5 s e amortecimento 0,72
+  // (K = ω², C = 2ζω); fechar é uma curva cúbica de 340 ms (.45, 0, .2, 1), sem balanço.
+  const MOLA_ABRIR = { K: (2 * Math.PI / .5) ** 2, C: 2 * .72 * (2 * Math.PI / .5) };
+  const CURVA_FECHAR = { ms: 340, ease: bezier(.45, 0, .2, 1) };
+  let tween = null;
+
+  function bezier(x1, y1, x2, y2) {
+    const cx = t => 3 * (1 - t) ** 2 * t * x1 + 3 * (1 - t) * t * t * x2 + t ** 3;
+    const cy = t => 3 * (1 - t) ** 2 * t * y1 + 3 * (1 - t) * t * t * y2 + t ** 3;
+    return x => {
+      let lo = 0, hi = 1, t = x;
+      for (let i = 0; i < 12; i++) { if (cx(t) < x) lo = t; else hi = t; t = (lo + hi) / 2; }
+      return cy(t);
+    };
+  }
+
   function moverPara(alvo) {
+    const encolhendo = alvo.h < mola.h - .5 && alvo.w < mola.w - .5;
     mola.alvo = { ...alvo };
+    tween = encolhendo ? { de: { w: mola.w, h: mola.h, r: mola.r }, t0: performance.now() } : null;
     informarRegiao(Math.max(mola.w, alvo.w), Math.max(mola.h, alvo.h));   // cobre a forma durante o movimento
     if (!mola.rodando) { mola.rodando = true; requestAnimationFrame(passoMola); }
   }
@@ -79,8 +97,20 @@
   function passoMola(t) {
     const dt = lim((t - (ultimoMola || t)) / 1000, 0, 1 / 30) || 1 / 60;
     ultimoMola = t;
-    const abrindo = mola.alvo.h > TAM.compacta.h;
-    const K = abrindo ? 230 : 300, C = abrindo ? 21 : 28;   // abrir balança um pouco; fechar é mais firme
+    if (tween) {
+      const p = Math.min(1, (t - tween.t0) / CURVA_FECHAR.ms), k = CURVA_FECHAR.ease(p);
+      for (const q of ['w', 'h', 'r']) mola[q] = tween.de[q] + (mola.alvo[q] - tween.de[q]) * k;
+      mola.vw = mola.vh = mola.vr = 0;
+      aplicarForma();
+      if (p < 1) { requestAnimationFrame(passoMola); return; }
+      tween = null;
+      Object.assign(mola, mola.alvo, { vw: 0, vh: 0, vr: 0 });
+      mola.rodando = false; ultimoMola = 0;
+      aplicarForma();
+      informarRegiao(mola.w, mola.h);
+      return;
+    }
+    const K = MOLA_ABRIR.K, C = MOLA_ABRIR.C;
     let parado = true;
     for (let s = 0; s < 4; s++) {
       for (const p of ['w', 'h', 'r']) {
