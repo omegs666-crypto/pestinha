@@ -59,13 +59,11 @@ def test_timers_de_paineis_param_quando_ocultos(pet_app):
     mlp.show()
     assert monitor.timer.isActive()
     assert protest.timer.isActive()
-    assert mlp._timer.isActive()
     monitor.hide()
     protest.hide()
     mlp.hide()
     assert not monitor.timer.isActive()
     assert not protest.timer.isActive()
-    assert not mlp._timer.isActive()
     pet_app.floats.shutdown()
 
 
@@ -74,8 +72,10 @@ def test_treino_mlp_nao_roda_na_thread_da_interface(pet_app):
     mlp.show()
     mlp.treinar()
     task = mlp._treino_task
-    assert not mlp.btn_treinar.isEnabled()
-    QTest.qWait(200)
+    assert mlp.btn_treinar.text() == "Pausar"
+    assert not mlp.btn_reiniciar.isEnabled()
+    QTest.qWait(400)
+    assert mlp._treino_task is None and mlp.btn_treinar.text() != "Pausar"
     assert mlp.btn_treinar.isEnabled()
     assert mlp.perdas
     assert task.thread_ident != threading.get_ident()

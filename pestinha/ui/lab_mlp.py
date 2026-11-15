@@ -1,45 +1,79 @@
 """
-LAB MLP - painel didático da rede feedforward (6 -> 4 -> 4 -> 2).
+LAB MLP - painel didático e interativo da rede feedforward (6 -> 4 -> 4 -> 2).
 
-Mostra os neurônios e as conexões, e um botão "Treinar" que roda épocas de
-backpropagation em dados fictícios e desenha a perda caindo embaixo.
-Fica no mesmo sistema de painéis flutuantes do monitor neural e do protesto.
+Você mexe nas entradas e nos alvos; a rede responde na hora (forward) e os neurônios
+acendem com as ativações reais. O botão Treinar roda backpropagation em segundo plano,
+com progresso ao vivo: os pesos, a saída e a curva de perda se atualizam enquanto a rede aprende.
+Pausar guarda o ponto alcançado; Reiniciar volta aos pesos iniciais.
 """
 
-import numpy as np
 import threading
 
-from PySide6.QtCore import QObject, QRectF, QRunnable, QThreadPool, Qt, QTimer, Signal
+import numpy as np
+from PySide6.QtCore import QObject, QRectF, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QGridLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
+)
 
 from ..core.mlp import NeuralNetwork
 from ..world.arrastavel import FloatingWidget
 from . import tema
 
-BG = tema.BG
-TEXT = tema.TEXTO
-GOOD = tema.VERDE
-MUTED = tema.FRACO
+ENTRADAS = ("x1", "x2", "x3", "x4", "x5", "x6")
+SAIDAS = ("y1", "y2")
+X_PADRAO = (0.2, 0.8, 0.5, 0.1, 0.9, 0.3)
+Y_PADRAO = (0.9, 0.1)
+NOMES_PESOS = ("W1", "W2", "W3", "b1", "b2", "b3")
+FORMAS = {"W1": (6, 4), "W2": (4, 4), "W3": (4, 2), "b1": (4,), "b2": (4,), "b3": (2,)}
+EPOCAS_LOTE = 500
+TAXA = 0.5
+PASSO_PROGRESSO = 5          # a cada quantas épocas a interface recebe o estado
+MAX_PERDAS = 5000
 
-X_DEMO = np.array([[0.2, 0.8, 0.5, 0.1, 0.9, 0.3]])
-Y_DEMO = np.array([[0.9, 0.1]])
+
+def _pesos_validos(pesos):
+    """Dict com os seis parâmetros nas formas certas e sem valores não finitos."""
+    try:
+        return all(
+            isinstance(pesos.get(n), np.ndarray) and pesos[n].shape == FORMAS[n] and np.isfinite(pesos[n]).all()
+            for n in NOMES_PESOS
+        )
+    except (AttributeError, TypeError):
+        return False
+
+
+def _copia_pesos(rede):
+    return {n: getattr(rede, n).copy() for n in NOMES_PESOS}
+
+
+def _limitada(valor):
+    """Ativação para o desenho: número finito entre 0 e 1."""
+    try:
+        valor = float(valor)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    return max(0.0, min(1.0, valor)) if np.isfinite(valor) else 0.0
 
 
 class _TreinoSignals(QObject):
-    """Sinais para devolver resultado do worker à thread Qt."""
+    """Sinais do worker; chegam à thread da interface em fila."""
 
+    progresso = Signal(object)
     concluido = Signal(object)
     falhou = Signal(str)
     liberado = Signal(object)
 
 
 class _TreinoTask(QRunnable):
-    """Treina uma cópia isolada da MLP sem acessar widgets fora da thread Qt."""
+    """Treina uma cópia isolada da rede com as entradas e alvos escolhidos, emitindo o estado a cada passo."""
 
-    def __init__(self, pesos, cancelamento):
+    def __init__(self, pesos, X, Y, epocas, taxa, cancelamento):
         super().__init__()
         self.pesos = pesos
+        self.X, self.Y = X, Y
+        self.epocas = epocas
+        self.taxa = taxa
         self.cancelamento = cancelamento
         self.signals = _TreinoSignals()
         self.thread_ident = None
@@ -48,230 +82,313 @@ class _TreinoTask(QRunnable):
         self.thread_ident = threading.get_ident()
         try:
             rede = NeuralNetwork()
-            for nome, value in self.pesos.items():
-                setattr(rede, nome, value.copy())
-            perdas = rede.train(
-                X_DEMO, Y_DEMO, epocas=500, taxa=0.5,
-                cancel_event=self.cancelamento,
-            )
-            a1 = rede.relu(X_DEMO @ rede.W1 + rede.b1)
-            a2 = rede.relu(a1 @ rede.W2 + rede.b2)
-            saida = rede.forward(X_DEMO)
-            resultado = {
-                "pesos": {nome: getattr(rede, nome).copy()
-                          for nome in ("W1", "W2", "W3", "b1", "b2", "b3")},
-                "perdas": perdas,
-                "ativacoes": [X_DEMO[0].copy(), a1[0], a2[0], saida[0]],
-            }
-            self.signals.concluido.emit(resultado)
+            for nome in NOMES_PESOS:
+                setattr(rede, nome, self.pesos[nome].copy())
+            pendentes = []
+            epoca = 0
+            while epoca < self.epocas and not self.cancelamento.is_set():
+                epoca += 1
+                pendentes.append(rede.mse(self.Y, rede.forward(self.X)))
+                rede.backward(self.X, self.Y, self.taxa)
+                if epoca % PASSO_PROGRESSO == 0:
+                    self.signals.progresso.emit({"pesos": _copia_pesos(rede), "perdas": pendentes, "epoca": epoca})
+                    pendentes = []
+            self.signals.concluido.emit({
+                "pesos": _copia_pesos(rede), "perdas": pendentes, "epoca": epoca,
+                "cancelado": self.cancelamento.is_set(),
+            })
         except Exception as error:
             self.signals.falhou.emit(str(error)[:240])
         finally:
             self.signals.liberado.emit(self)
 
     def cancelar(self):
-        """Sinaliza ao loop de épocas para parar no próximo limite seguro."""
+        """Para o loop de épocas no próximo passo; o ponto alcançado é mantido."""
         self.cancelamento.set()
 
 
 class RedeWidget(QWidget):
-    """Desenha a MLP 6-4-4-2: neurônios como círculos e conexões com peso na cor (verde +, vermelho −)."""
-    def __init__(self, rede):
-        """Guarda a rede e define o tamanho do desenho."""
+    """Desenha a rede 6-4-4-2: neurônios acesos pela ativação real e conexões pela cor do peso."""
+
+    def __init__(self):
         super().__init__()
-        self.rede = rede
-        self.setMinimumSize(340, 230)
+        self.rede = None
+        self.ativ = None          # [entrada, oculta1, oculta2, saída] do último forward
+        self.alvo = np.zeros(2)
+        self.setMinimumSize(360, 230)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
+    def atualizar(self, rede, ativ, alvo):
+        self.rede, self.ativ, self.alvo = rede, ativ, alvo
+        self.update()
+
     def _posicoes(self):
-        """Coordenadas de cada neurônio: entrada (6), ocultas (4, 4), saída (2)."""
         w, h = self.width(), self.height()
         camadas = [6, 4, 4, 2]
-        xs = [w * (i + 1) / (len(camadas) + 1) for i in range(len(camadas))]
-        return [[(x, h * (i + 1) / (n + 1)) for i in range(n)] for x, n in zip(xs, camadas)]
+        esq, dir_ = 30, 128                      # à direita cabe o rótulo das saídas (y1, alvo)
+        xs = [esq + (w - esq - dir_) * i / (len(camadas) - 1) for i in range(len(camadas))]
+        margem = 30
+        return [[(x, margem + (h - 2 * margem) * (i + 0.5) / n) for i in range(n)] for x, n in zip(xs, camadas)]
 
     def paintEvent(self, _ev):
-        """Desenha conexões (cor pelo peso) e neurônios (preenchido pela ativação do último forward)."""
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         tema.fundo_arredondado(p, self.width(), self.height(), raio=12, cor=tema.CARTAO)
         pos = self._posicoes()
-        pesos = [
-            getattr(self.rede, "W1", None),
-            getattr(self.rede, "W2", None),
-            getattr(self.rede, "W3", None),
-        ]
-        expected = ((6, 4), (4, 4), (4, 2))
-        if any(
-            not isinstance(weight, np.ndarray)
-            or weight.shape != shape
-            or not np.isfinite(weight).all()
-            for weight, shape in zip(pesos, expected)
-        ):
-            p.setPen(MUTED)
-            p.drawText(self.rect(), Qt.AlignCenter, "Pesos da rede inválidos")
+        p.setFont(tema.fonte(8))
+        p.setPen(tema.FRACO)
+        p.drawText(12, 16, "pesos: verde +  ·  vermelho −  ·  anel = alvo")
+        if self.rede is None or not _pesos_validos({n: getattr(self.rede, n) for n in NOMES_PESOS}):
+            p.setPen(tema.FRACO)
+            p.drawText(self.rect(), Qt.AlignCenter, "Pesos inválidos: clique em Reiniciar")
             p.end()
             return
+        pesos = [self.rede.W1, self.rede.W2, self.rede.W3]
         for cam, W in enumerate(pesos):
             wmax = max(1e-6, float(np.abs(W).max()))
             for i, (x0, y0) in enumerate(pos[cam]):
                 for j, (x1, y1) in enumerate(pos[cam + 1]):
-                    w_ = float(W[i, j])
-                    cor = GOOD if w_ > 0 else QColor("#e0474c")
-                    cor.setAlpha(int(40 + 180 * abs(w_) / wmax))
-                    p.setPen(QPen(cor, 1))
+                    w = float(W[i, j])
+                    forca = abs(w) / wmax
+                    cor = QColor(tema.VERDE) if w > 0 else QColor(tema.VERMELHO)
+                    cor.setAlpha(int(30 + 200 * forca))
+                    p.setPen(QPen(cor, 0.6 + 1.6 * forca))
                     p.drawLine(int(x0), int(y0), int(x1), int(y1))
-        ativ = getattr(self.rede, "_ativ", None)
-        expected_activations = (6, 4, 4, 2)
-        valid_activations = (
-            isinstance(ativ, (list, tuple))
-            and len(ativ) == len(expected_activations)
-            and all(
-                isinstance(layer, np.ndarray)
-                and layer.shape == (size,)
-                and np.isfinite(layer).all()
-                for layer, size in zip(ativ, expected_activations)
-            )
-        )
+        ativ = self.ativ or [np.zeros(6), np.zeros(4), np.zeros(4), np.zeros(2)]
         for ci, camada in enumerate(pos):
             for j, (x, y) in enumerate(camada):
-                a = _bounded_activation(ativ[ci][j]) if valid_activations else 0.0
-                fill = QColor("#1c3b28"); fill.setAlpha(int(60 + 180 * a))
+                a = _limitada(ativ[ci][j])
+                fill = QColor(tema.CYAN if ci < 3 else tema.AMBER)
+                fill.setAlpha(int(40 + 215 * a))
                 p.setBrush(fill)
-                p.setPen(QPen(GOOD, 1.5))
+                p.setPen(QPen(tema.INK, 1))
                 p.drawEllipse(int(x - 9), int(y - 9), 18, 18)
+        p.setBrush(Qt.NoBrush)
+        for j, (x, y) in enumerate(pos[-1]):
+            p.setPen(QPen(tema.AMBER, 1.5, Qt.DashLine))
+            p.drawEllipse(int(x - 15), int(y - 15), 30, 30)
+        p.setFont(tema.fonte(8))
+        p.setPen(tema.FRACO)
+        for j, (x, y) in enumerate(pos[0]):
+            p.drawText(int(x - 27), int(y + 4), ENTRADAS[j])
+        for j, (x, y) in enumerate(pos[-1]):
+            saida = float(ativ[3][j]) if np.isfinite(ativ[3][j]) else 0.0
+            p.drawText(int(x + 20), int(y + 4), f"{SAIDAS[j]} {saida:.2f}  (alvo {self.alvo[j]:.2f})")
         p.end()
 
 
-def _bounded_activation(value):
-    """Garante alfa visual finito para uma ativação numérica."""
-    try:
-        value = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return 0.0
-    return max(0.0, min(1.0, value)) if np.isfinite(value) else 0.0
+class CurvaPerda(QWidget):
+    """Curva da perda do treino com valores de referência."""
+
+    def __init__(self):
+        super().__init__()
+        self.perdas = []
+        self.setMinimumHeight(90)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+    def definir(self, perdas):
+        self.perdas = [float(v) for v in perdas[-600:] if np.isfinite(v)]
+        self.update()
+
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        tema.cartao(p, QRectF(0, 0, w, h), raio=10)
+        p.setFont(tema.fonte(8))
+        p.setPen(tema.FRACO)
+        if len(self.perdas) < 2:
+            p.drawText(self.rect(), Qt.AlignCenter, "Treine para ver a perda cair")
+            p.end()
+            return
+        topo, base, esq = 22, h - 12, 12
+        lo, hi = min(self.perdas), max(self.perdas)
+        span = max(1e-12, hi - lo)
+        p.drawText(esq, 14, f"perda {self.perdas[-1]:.6f}")
+        p.drawText(w - 110, 14, f"máx {hi:.4f}  mín {lo:.4f}")
+        p.setPen(QPen(tema.VERDE, 1.6))
+        n = len(self.perdas)
+        for i in range(1, n):
+            x0 = esq + (w - 2 * esq) * (i - 1) / (n - 1)
+            x1 = esq + (w - 2 * esq) * i / (n - 1)
+            y0 = base - (self.perdas[i - 1] - lo) / span * (base - topo)
+            y1 = base - (self.perdas[i] - lo) / span * (base - topo)
+            p.drawLine(int(x0), int(y0), int(x1), int(y1))
+        p.end()
 
 
 class LabMLP(FloatingWidget):
-    """Painel 'Laboratório MLP': desenho da rede + botão Treinar + gráfico de perda."""
+    """Painel 'Laboratório MLP': entradas e alvos ao vivo, treino com progresso, pausa e reinício."""
+
     def __init__(self, app, pos):
-        """Cria a rede didática, o desenho e os controles de treino."""
-        super().__init__(app, "mlp", "Laboratório MLP", (380, 420), (300, 300), pos)
+        super().__init__(app, "mlp", "Laboratório MLP", (480, 660), (420, 580), pos)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.rede = NeuralNetwork()
         self.perdas = []
+        self.saida = np.zeros(2)
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(1)
         self._treino_task = None
         corpo = QVBoxLayout(self)
-        corpo.setContentsMargins(10, 10, 10, 10)
+        corpo.setContentsMargins(14, 14, 24, 14)
         corpo.setSpacing(8)
-        self.desenho = RedeWidget(self.rede)
-        corpo.addWidget(self.desenho)
-        self.rotulo = QLabel("Clique Treinar para ver a perda cair")
-        self.rotulo.setStyleSheet(f"color: {tema.FRACO.name()}; font-size: 10px;")
-        corpo.addWidget(self.rotulo)
-        self.btn_treinar = QPushButton("Treinar 500 épocas")
+        self.desenho = RedeWidget()
+        corpo.addWidget(self.desenho, 1)
+        grade = QGridLayout()
+        grade.setHorizontalSpacing(8)
+        grade.setVerticalSpacing(4)
+        self.sl_entrada, self.sl_alvo, self.lbl_valor = [], [], []
+        nomes = list(ENTRADAS) + list(SAIDAS)
+        valores = [v for v in X_PADRAO] + [v for v in Y_PADRAO]
+        for linha, (nome, valor) in enumerate(zip(nomes, valores)):
+            rotulo = QLabel(f"entrada {nome}" if nome in ENTRADAS else f"alvo {nome}")
+            rotulo.setStyleSheet(f"color: {tema.FRACO.name()}; font-size: 10px;")
+            rotulo.setFixedWidth(84)
+            sl = QSlider(Qt.Horizontal)
+            sl.setMinimumWidth(120)
+            sl.setRange(0, 100)
+            sl.setValue(round(valor * 100))
+            sl.setStyleSheet(self._estilo_slider())
+            num = QLabel(f"{valor:.2f}")
+            num.setStyleSheet(f"color: {tema.TEXTO.name()}; font-size: 10px;")
+            num.setFixedWidth(34)
+            sl.valueChanged.connect(lambda _v, i=linha: self._valor_mudou(i))
+            grade.addWidget(rotulo, linha, 0)
+            grade.addWidget(sl, linha, 1)
+            grade.addWidget(num, linha, 2)
+            (self.sl_entrada if linha < 6 else self.sl_alvo).append(sl)
+            self.lbl_valor.append(num)
+        corpo.addLayout(grade)
+        botoes = QHBoxLayout()
+        self.btn_treinar = QPushButton(f"Treinar {EPOCAS_LOTE} épocas")
         self.btn_treinar.setStyleSheet(tema.qss_pill())
         self.btn_treinar.clicked.connect(self.treinar)
-        corpo.addWidget(self.btn_treinar)
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self.update)
+        self.btn_reiniciar = QPushButton("Reiniciar pesos")
+        self.btn_reiniciar.setStyleSheet(tema.qss_pill())
+        self.btn_reiniciar.clicked.connect(self.reiniciar)
+        botoes.addWidget(self.btn_treinar)
+        botoes.addWidget(self.btn_reiniciar)
+        corpo.addLayout(botoes)
+        self.curva = CurvaPerda()
+        corpo.addWidget(self.curva)
+        self.saida_lbl = QLabel()
+        self.saida_lbl.setStyleSheet(f"color: {tema.TEXTO.name()}; background: transparent; font-size: 11px;")
+        corpo.addWidget(self.saida_lbl)
+        self.rotulo = QLabel("Mexa nas entradas: a rede responde na hora.")
+        self.rotulo.setStyleSheet(f"color: {tema.FRACO.name()}; font-size: 10px;")
+        corpo.addWidget(self.rotulo)
+        self._prever()
+
+    @staticmethod
+    def _estilo_slider():
+        return (
+            "QSlider::groove:horizontal { height: 3px; background: #34363b; border-radius: 2px; }"
+            f"QSlider::sub-page:horizontal {{ background: {tema.CYAN.name()}; border-radius: 2px; }}"
+            f"QSlider::handle:horizontal {{ width: 12px; margin: -5px 0; border-radius: 6px; background: {tema.INK.name()}; }}"
+        )
+
+    def _valores_entrada(self):
+        return np.array([s.value() / 100.0 for s in self.sl_entrada])
+
+    def _valores_alvo(self):
+        return np.array([s.value() / 100.0 for s in self.sl_alvo])
+
+    def _valor_mudou(self, linha):
+        self.lbl_valor[linha].setText(f"{(self.sl_entrada + self.sl_alvo)[linha].value() / 100:.2f}")
+        self._prever()
+
+    def _prever(self):
+        """Forward com as entradas atuais: atualiza ativações, saída e o desenho."""
+        x = self._valores_entrada()
+        try:
+            saida = self.rede.forward(x)
+        except (ValueError, FloatingPointError):
+            self.desenho.atualizar(None, None, self._valores_alvo())
+            self.saida_lbl.setText("Pesos inválidos: clique em Reiniciar pesos.")
+            return
+        cache = self.rede._cache
+        self.saida = np.array(saida, dtype=float)
+        ativ = [x.copy(), cache[2][0].copy(), cache[4][0].copy(), self.saida.copy()]
+        alvo = self._valores_alvo()
+        self.desenho.atualizar(self.rede, ativ, alvo)
+        self.saida_lbl.setText(
+            f"saída y1 {saida[0]:.3f} · y2 {saida[1]:.3f}  |  erro (MSE) {NeuralNetwork.mse(alvo, saida):.5f}"
+        )
 
     def treinar(self):
-        """Executa o treino em worker e aplica o resultado somente na thread Qt."""
+        """Inicia o treino com as entradas e alvos atuais; com treino rodando, pausa."""
         if self._treino_task is not None:
+            self.cancelar_treino()
             return
-        pesos = {nome: getattr(self.rede, nome).copy()
-                 for nome in ("W1", "W2", "W3", "b1", "b2", "b3")}
-        task = _TreinoTask(pesos, threading.Event())
+        X = self._valores_entrada().reshape(1, 6)
+        Y = self._valores_alvo().reshape(1, 2)
+        task = _TreinoTask(_copia_pesos(self.rede), X, Y, EPOCAS_LOTE, TAXA, threading.Event())
+        task.signals.progresso.connect(self._progresso)
         task.signals.concluido.connect(self._treino_concluido)
         task.signals.falhou.connect(self._treino_falhou)
         task.signals.liberado.connect(self._treino_liberado)
         self._treino_task = task
-        self.btn_treinar.setEnabled(False)
+        self.btn_treinar.setText("Pausar")
+        self.btn_reiniciar.setEnabled(False)
         self.rotulo.setText("Treinando em segundo plano…")
         self._pool.start(task)
 
-    def _treino_concluido(self, resultado):
-        """Copia pesos e ativações do worker para a UI após validar as dimensões."""
-        shapes = {
-            "W1": (6, 4), "W2": (4, 4), "W3": (4, 2),
-            "b1": (4,), "b2": (4,), "b3": (2,),
-        }
-        pesos = resultado.get("pesos", {})
-        for nome, shape in shapes.items():
-            try:
-                value = np.asarray(pesos.get(nome), dtype=float)
-            except (TypeError, ValueError, OverflowError):
-                self._treino_falhou(f"Parâmetro inválido: {nome}.")
-                return
-            if value.shape != shape or not np.isfinite(value).all():
-                self._treino_falhou(f"Dimensão inválida no parâmetro {nome}.")
-                return
-        perdas = resultado.get("perdas", [])
-        if not isinstance(perdas, list) or not perdas:
-            self.rotulo.setText("Treino cancelado.")
+    def _aplicar(self, pesos):
+        """Copia os pesos do worker para a rede da interface (depois de validar as formas)."""
+        if not _pesos_validos(pesos):
+            return False
+        for nome in NOMES_PESOS:
+            setattr(self.rede, nome, pesos[nome].copy())
+        return True
+
+    def _progresso(self, dados):
+        if not self._aplicar(dados["pesos"]):
             return
-        ativacoes = resultado.get("ativacoes")
-        expected_activations = ((6,), (4,), (4,), (2,))
-        if not isinstance(ativacoes, list) or len(ativacoes) != len(expected_activations):
-            self._treino_falhou("Ativações da rede inválidas.")
+        self.perdas = (self.perdas + dados["perdas"])[-MAX_PERDAS:]
+        self.curva.definir(self.perdas)
+        self.rotulo.setText(f"treinando: época {dados['epoca']}/{EPOCAS_LOTE} · perda {self.perdas[-1]:.6f}")
+        self._prever()
+
+    def _treino_concluido(self, dados):
+        if not self._aplicar(dados["pesos"]):
+            self._treino_falhou("pesos inválidos ao final do treino")
             return
-        clean_activations = []
-        for value, shape in zip(ativacoes, expected_activations):
-            try:
-                array = np.asarray(value, dtype=float)
-            except (TypeError, ValueError, OverflowError):
-                self._treino_falhou("Ativações da rede não numéricas.")
-                return
-            if array.shape != shape or not np.isfinite(array).all():
-                self._treino_falhou("Dimensão inválida nas ativações da rede.")
-                return
-            clean_activations.append(array.copy())
-        clean_losses = []
-        for value in perdas:
-            try:
-                loss = float(value)
-            except (TypeError, ValueError, OverflowError):
-                continue
-            if np.isfinite(loss):
-                clean_losses.append(loss)
-        if not clean_losses:
-            self.rotulo.setText("Treino cancelado.")
-            return
-        for nome in shapes:
-            setattr(self.rede, nome, np.asarray(pesos[nome], dtype=float).copy())
-        self.perdas.extend(clean_losses)
-        self.perdas = self.perdas[-5000:]
-        self.rede._ativ = clean_activations
-        self.rotulo.setText(f"perda: {self.perdas[-1]:.6f}")
-        self.desenho.update()
-        self.update()
+        self.perdas = (self.perdas + dados["perdas"])[-MAX_PERDAS:]
+        self.curva.definir(self.perdas)
+        estado = "pausado" if dados["cancelado"] else "concluído"
+        perda = f"{self.perdas[-1]:.6f}" if self.perdas else "—"
+        self.rotulo.setText(f"treino {estado} em {dados['epoca']} épocas · perda {perda}")
+        self._prever()
 
     def _treino_falhou(self, message):
-        self.rotulo.setText(f"Treino indisponível: {message}")
+        self.rotulo.setText(f"Treino interrompido: {message}")
 
     def _treino_liberado(self, _task):
         self._treino_task = None
-        self.btn_treinar.setEnabled(True)
+        self.btn_treinar.setText(f"Treinar {EPOCAS_LOTE} épocas")
+        self.btn_reiniciar.setEnabled(True)
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        self._timer.start(500)
-
-    def hideEvent(self, event):
-        self._timer.stop()
-        self.cancelar_treino()
-        super().hideEvent(event)
+    def reiniciar(self):
+        """Volta aos pesos iniciais e apaga a curva; só quando não há treino rodando."""
+        if self._treino_task is not None:
+            return
+        self.rede = NeuralNetwork()
+        self.perdas = []
+        self.curva.definir([])
+        self.rotulo.setText("Pesos reiniciados.")
+        self._prever()
 
     def cancelar_treino(self):
         """Pede ao worker para parar entre épocas sem bloquear a interface."""
         if self._treino_task is not None:
             self._treino_task.cancelar()
 
+    def hideEvent(self, event):
+        self.cancelar_treino()
+        super().hideEvent(event)
+
     def shutdown(self):
-        """Para treino pendente e aguarda worker por um intervalo limitado."""
+        """Para treino pendente e aguarda o worker por um intervalo limitado."""
         self.cancelar_treino()
         self._pool.clear()
         self._pool.waitForDone(750)
@@ -279,33 +396,3 @@ class LabMLP(FloatingWidget):
     def closeEvent(self, event):
         self.shutdown()
         super().closeEvent(event)
-
-    def paintEvent(self, ev):
-        """Desenha o painel e, embaixo, a curva de perda do treino."""
-        super().paintEvent(ev)
-        pts = []
-        for value in self.perdas[-300:]:
-            try:
-                number = float(value)
-            except (TypeError, ValueError, OverflowError):
-                continue
-            if np.isfinite(number):
-                pts.append(number)
-        if len(pts) < 2:
-            return
-        p = QPainter(self)
-        w, h = self.width(), self.height()
-        base = h - 60
-        tema.cartao(p, QRectF(8, base - 58, w - 16, 58), raio=8)
-        p.setPen(QPen(MUTED, 1))
-        p.drawText(10, base - 4, "perda")
-        mmax, mmin = max(pts), min(pts)
-        span = max(1e-9, mmax - mmin)
-        p.setPen(QPen(GOOD, 1.5))
-        for i in range(1, len(pts)):
-            x0 = 10 + (i - 1) * (w - 20) / max(1, len(pts) - 1)
-            x1 = 10 + i * (w - 20) / max(1, len(pts) - 1)
-            y0 = base - (pts[i - 1] - mmin) / span * 50
-            y1 = base - (pts[i] - mmin) / span * 50
-            p.drawLine(int(x0), int(y0), int(x1), int(y1))
-        p.end()
