@@ -16,3 +16,12 @@
 ## Testes
 - `test_posicao_da_pilula_fica_dentro_da_tela` reescrito para a região;
   `test_posicao_limita_regiao_larga_do_balao` cobre o caso real medido (976 px de máscara).
+
+## Correção 2 — a causa real do recorte (janela 100x30)
+- Reproduzido na tela real: com `memory/web_posicao.json` existente, a janela abria com **100x30 px**
+  em vez de 1040x620. `_posicionar` só chamava `move()` nesse caminho e nunca definia o tamanho
+  (o `setGeometry` com o tamanho cheio só existia no caminho sem posição salva).
+  Resultado: um retângulo escuro com só o orbe visível — o print do usuário.
+- Correção: `setFixedSize(*JANELA)` antes de posicionar, em qualquer caminho.
+- Verificado no harness real: janela 1040x620, máscara 1036x442 com a posição salva do usuário.
+- Teste: `test_posicao_salva_mantem_o_tamanho_cheio_da_janela` (falha sem a correção).

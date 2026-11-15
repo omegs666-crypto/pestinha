@@ -75,6 +75,7 @@ class WebIlha(QWidget):
 
     def _posicionar(self):
         largura, altura = JANELA
+        self.setFixedSize(largura, altura)      # sempre o tamanho cheio: só `move` deixava a janela em 100x30
         self._regiao = QRect(*REGIAO_INICIAL)
         salva = self._ler_posicao()
         if salva:

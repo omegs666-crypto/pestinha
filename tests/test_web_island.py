@@ -207,3 +207,13 @@ def test_posicao_limita_regiao_larga_do_balao():
     regiao = QRect(32, 0, 976, 88)                        # máscara real medida com balão ativo
     x, y = web_island.limitar_posicao(1520, 529, tela, w, h, regiao)
     assert x + regiao.right() == 1919 and x + regiao.left() >= 0
+
+
+@pytest.mark.skipif(not web_island.WEB_OK, reason="sem QtWebEngine")
+def test_posicao_salva_mantem_o_tamanho_cheio_da_janela(tmp_path):
+    """Com posição salva a janela só era movida e ficava com 100x30 do Qt: a pílula aparecia cortada."""
+    QApplication.instance() or QApplication([])
+    (tmp_path / web_island.ARQUIVO_POSICAO).write_text(json.dumps({"x": 600, "y": 300}), encoding="utf-8")
+    ilha = web_island.WebIlha(FakeApp(tmp_path))
+    assert (ilha.width(), ilha.height()) == web_island.JANELA
+    ilha.close()
