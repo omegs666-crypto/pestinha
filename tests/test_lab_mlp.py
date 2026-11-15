@@ -112,3 +112,15 @@ def test_curva_aceita_vazio_e_valores_invalidos():
     curva.definir([float("nan"), 0.5, float("inf"), 0.25])
     assert curva.perdas == [0.5, 0.25]
     curva.close()
+
+
+def test_painel_tem_fundo_opaco_escuro_como_os_outros(tmp_path):
+    """O painel não pode ficar transparente: o miolo é escuro e opaco; só os cantos arredondados são vazados."""
+    lab = _lab(tmp_path)
+    lab.resize(480, 660)
+    lab.show()
+    imagem = lab.grab().toImage()
+    lab.close()
+    cor = imagem.pixelColor(240, 40)
+    assert cor.alpha() == 255 and cor.red() < 60 and cor.green() < 60
+    assert imagem.pixelColor(1, 1).alpha() == 0

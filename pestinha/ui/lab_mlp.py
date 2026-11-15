@@ -355,8 +355,14 @@ class LabMLP(FloatingWidget):
         self._pool.setMaxThreadCount(1)
         self._treino_task = None
         corpo = QVBoxLayout(self)
-        corpo.setContentsMargins(14, 14, 24, 14)
+        corpo.setContentsMargins(14, 12, 24, 14)
         corpo.setSpacing(8)
+        cabeca = QLabel("Laboratório MLP")
+        cabeca.setStyleSheet(f"color: {tema.TEXTO.name()}; font-family: '{tema.FONTE}'; font-size: 13px; font-weight: 700;")
+        subtitulo = QLabel("rede 6 → 4 → 4 → 2  ·  ReLU nas ocultas, sigmoide na saída")
+        subtitulo.setStyleSheet(f"color: {tema.FRACO.name()}; font-family: '{tema.FONTE}'; font-size: 10px;")
+        corpo.addWidget(cabeca)
+        corpo.addWidget(subtitulo)
         self.desenho = RedeWidget()
         corpo.addWidget(self.desenho, 1)
         grade = QGridLayout()
@@ -367,7 +373,7 @@ class LabMLP(FloatingWidget):
         valores = [v for v in X_PADRAO] + [v for v in Y_PADRAO]
         for linha, (nome, valor) in enumerate(zip(nomes, valores)):
             rotulo = QLabel(f"entrada {nome}" if nome in ENTRADAS else f"alvo {nome}")
-            rotulo.setStyleSheet(f"color: {tema.FRACO.name()}; font-size: 10px;")
+            rotulo.setStyleSheet(f"color: {tema.FRACO.name()}; font-family: '{tema.FONTE}'; font-size: 10px;")
             rotulo.setFixedWidth(84)
             sl = QSlider(Qt.Horizontal)
             sl.setMinimumWidth(120)
@@ -375,7 +381,7 @@ class LabMLP(FloatingWidget):
             sl.setValue(round(valor * 100))
             sl.setStyleSheet(self._estilo_slider())
             num = QLabel(f"{valor:.2f}")
-            num.setStyleSheet(f"color: {tema.TEXTO.name()}; font-size: 10px;")
+            num.setStyleSheet(f"color: {tema.TEXTO.name()}; font-family: '{tema.FONTE}'; font-size: 10px;")
             num.setFixedWidth(34)
             sl.valueChanged.connect(lambda _v, i=linha: self._valor_mudou(i))
             grade.addWidget(rotulo, linha, 0)
@@ -400,9 +406,16 @@ class LabMLP(FloatingWidget):
         self.saida_lbl.setStyleSheet(f"color: {tema.TEXTO.name()}; background: transparent; font-size: 11px;")
         corpo.addWidget(self.saida_lbl)
         self.rotulo = QLabel("Mexa nas entradas: a rede responde na hora.")
-        self.rotulo.setStyleSheet(f"color: {tema.FRACO.name()}; font-size: 10px;")
+        self.rotulo.setStyleSheet(f"color: {tema.FRACO.name()}; font-family: '{tema.FONTE}'; font-size: 10px;")
         corpo.addWidget(self.rotulo)
         self._prever()
+
+    def paintEvent(self, _ev):
+        """Fundo escuro arredondado, como o monitor e o protesto: sem ele o painel ficava transparente."""
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        tema.fundo_arredondado(p, self.width(), self.height(), raio=16)
+        p.end()
 
     @staticmethod
     def _estilo_slider():
