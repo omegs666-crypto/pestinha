@@ -328,10 +328,10 @@
     //   amortecimento: atrito por frame (perto de 1 = seco; baixo = quica, inércia)
     // ============================================================================
     const BRACO_CFG = {
-      rigPos: .10, amoPos: .60,      // posição: resposta média, balanço moderado
-      rigRot: .07, amoRot: .55,      // rotação: pêndulo mole, oscila antes de parar
-      rigSq: .16, amoSq: .55,        // squash: deforma rápido, elasticidade quica
-      ganhoRot: .9, ganhoSq: .06, sqMax: .35,
+      rigPos: .16, amoPos: .72,      // posição: snap rápido + quica leve (espelha bracos.py)
+      rigRot: .13, amoRot: .70,      // rotação: pêndulo sem rabo de balanço
+      rigSq: .22, amoSq: .70,        // squash: deforma e volta num flash
+      ganhoRot: .55, ganhoSq: .05, sqMax: .30,
       idleAmp: 4, idleFreq: 3, idleFase: 1.3, idleSway: 1.8,
       falaAmp: 14, falaFreqE: 16, falaFreqD: 14, ganhoBoca: .3,
       exag: 1.6,                            // exagero do mascote: na escala .28 o movimento some sem ele
@@ -358,7 +358,7 @@
       },
     });
     const bra = { esq: bracoB(-1), dir: bracoB(1) };
-    const pulo = molaB(.14, .55);               // o mascote pula quando o pet é cutucado/arremessado
+    const pulo = molaB(.16, .72);               // o mascote pula quando o pet é cutucado/arremessado
     let piscada = 0, proxPiscada = 2, gx = 0, gy = 0, pontX = -1e4, pontY = -1e4;
     let felizFechado = false, carinhoAte = 0;   // carinho: olhinhos ^^ + corações (estado ou gesto)
     let esfrega = [], ultimoCarinho = 0;        // esfregar o mouse no mascote = carinho (como no pet)

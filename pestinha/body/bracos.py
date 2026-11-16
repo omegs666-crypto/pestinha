@@ -35,16 +35,16 @@ from .boca import Mola
 # amortecimento (damping): atrito por passo.
 #   perto de 1 = movimento curto e seco; baixo = quica muito (inércia longa).
 # ============================================================================
-RIGIDEZ_POS = 0.10       # posição: resposta média, braço leve
-AMORT_POS = 0.60         # posição: amortecimento do protótipo, balanço moderado
-RIGIDEZ_ROT = 0.07       # rotação: pêndulo mole, inclina devagar
-AMORT_ROT = 0.55         # rotação: oscila bastante antes de parar
-RIGIDEZ_SQ = 0.16        # squash: deforma rápido ao acelerar
-AMORT_SQ = 0.55          # squash: a elasticidade quica antes de assentar
+RIGIDEZ_POS = 0.16       # posição: snap rápido (50% do alvo em ~33 ms) - mais = mais seco/robótico
+AMORT_POS = 0.72         # posição: quica leve de ~20% e assenta; subir = mais balanço (lelelê)
+RIGIDEZ_ROT = 0.13       # rotação: pêndulo acompanha o gesto sem arrastar
+AMORT_ROT = 0.70         # rotação: para de oscilar rápido, sem rabo de balanço
+RIGIDEZ_SQ = 0.22        # squash: deforma e volta num flash
+AMORT_SQ = 0.70          # squash: não fica tremendo depois do gesto
 
-GANHO_ROT = 0.9          # quanto a velocidade X vira inclinação (pendular)
-GANHO_SQ = 0.06          # quanto a energia do movimento vira deformação
-SQ_MAX = 0.35            # deformação máxima (35% - além disso parece borracha demais)
+GANHO_ROT = 0.55         # quanto a velocidade X vira inclinação (alto = pêndulo exagerado)
+GANHO_SQ = 0.05          # quanto a energia do movimento vira deformação
+SQ_MAX = 0.30            # deformação máxima (30% - além disso parece borracha demais)
 
 # ============================================================================
 # 2. ALVOS POR ESTADO - repouso (respiração) e fala (gesticulação)
