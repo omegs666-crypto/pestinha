@@ -36,6 +36,7 @@ class Aparencia:
     olho: QColor = field(default_factory=lambda: QColor(EYE))
     brilho: QColor = field(default_factory=lambda: QColor(SHINE))
     acessorios: tuple = ()             # ((nome, QColor), ...) na ordem em que são desenhados
+    bracos: QColor = None              # contorno dos braços mecânicos; None = o pet não tem braços
 
 
 CAMPOS_DE_COR = ("moldura", "casca", "tela", "olho", "brilho")
@@ -58,7 +59,10 @@ def aparencia_de(dados):
                 cor = pedidos[nome]
                 cor = cor if isinstance(cor, str) and COR_HEX.match(cor) else COR_PADRAO_ACESSORIO[nome]
                 acessorios.append((nome, QColor(cor)))
-    return Aparencia(**cores, acessorios=tuple(acessorios))
+    bracos = dados.get("bracos")
+    cor_bracos = (QColor(bracos) if isinstance(bracos, str) and COR_HEX.match(bracos)
+                  else (QColor(cores.get("moldura", FRAME)) if bracos is True else None))
+    return Aparencia(**cores, acessorios=tuple(acessorios), bracos=cor_bracos)
 
 
 PADRAO = Aparencia()
@@ -70,9 +74,11 @@ def lerp_shape(current, target, k):
 
 
 def draw_face(p, shape, gaze=(0.0, 0.0), blink=1.0, emotion="observando", carinho=False,
-              aparencia=PADRAO, boca=None):
-    """Desenha moldura + tela + olhos + boca (+ acessórios) com centro na origem do painter."""
+              aparencia=PADRAO, boca=None, bracos=None):
+    """Desenha moldura + tela + olhos + boca (+ acessórios e braços) com centro na origem do painter."""
     a = aparencia
+    if a.bracos and bracos is not None:
+        _bracos(p, a.bracos, bracos)
     p.setPen(QPen(a.moldura, 5))
     p.setBrush(a.casca)
     p.drawRoundedRect(QRectF(-BODY_W / 2, -BODY_H / 2, BODY_W, BODY_H), 20, 20)
@@ -99,6 +105,21 @@ def draw_face(p, shape, gaze=(0.0, 0.0), blink=1.0, emotion="observando", carinh
     for nome, cor in a.acessorios:
         if nome == "oculos":
             _oculos(p, cor)
+
+
+def _bracos(p, cor, bracos):
+    """Os braços mecânicos: cápsulas escuras com contorno neon, nas laterais, seguindo as molas."""
+    metal = QColor("#1e222b")
+    p.setBrush(metal)
+    p.setPen(QPen(cor, 5))
+    p.save()
+    p.translate(-72 + bracos.esq_x.valor, 55 + bracos.esq_y.valor)     # ±72: cabe na janela de 200 px
+    p.drawRoundedRect(QRectF(-24, -10, 32, 20), 10, 10)
+    p.restore()
+    p.save()
+    p.translate(72 + bracos.dir_x.valor, 55 + bracos.dir_y.valor)
+    p.drawRoundedRect(QRectF(-8, -10, 32, 20), 10, 10)
+    p.restore()
 
 
 def _boca(p, boca, a):

@@ -36,7 +36,9 @@ class PetState:
         self.allow_poke = True
         self.blink_until = 0.0
         from .boca import Boca
+        from .bracos import Bracos
         self.boca = Boca()                      # molas da boca e do balanço da gravata
+        self.bracos = Bracos()                  # molas dos braços mecânicos (se o pet os tiver)
         self.caress_until = 0.0
         self.feliz_ate = 0.0            # olhinhos fechados de felicidade, um pouco depois do carinho
         self.dizzy_until = 0.0

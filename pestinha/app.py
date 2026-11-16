@@ -503,6 +503,7 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
             self._c2["emocao"] = emotion
             self._evento(emotion)                      # fala a emoção nova (balão e, se ligada, em voz)
         st.boca.passo(self.voz._falando)           # a boca mexe enquanto a Voz fala
+        st.bracos.passo(self.voz._falando, st.boca.abertura.valor)   # e os braços gesticulam junto
         self._segundo_cerebro_estados()
 
     def frame(self):

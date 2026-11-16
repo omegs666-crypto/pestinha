@@ -209,6 +209,7 @@ class Ponte(QObject):
         return json.dumps({
             "cores": {campo: getattr(ap, campo).name() for campo in CAMPOS_DE_COR},
             "acessorios": {nome: cor.name() for nome, cor in ap.acessorios},
+            "bracos": ap.bracos.name() if ap.bracos else None,
             "olhos": EYE_SHAPES,
         })
 

@@ -17,5 +17,8 @@
     "arremesso": 0.6,
     "postit": 0.5
   },
-  "reacao_notebook": "bravo"
+  "reacao_notebook": "bravo",
+  "aparencia": {
+    "bracos": true
+  }
 }

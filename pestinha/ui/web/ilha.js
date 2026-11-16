@@ -318,10 +318,13 @@
   // As formas dos olhos e as cores vêm do Python (ponte.aparencia_pet), sem duplicar a tabela.
   const mascote = (() => {
     const c = $('#mascote'), ctx = c.getContext('2d');
-    const W = 40, H = 34, K = .28;                 // corpo de 120x90 em escala
+    const W = 64, H = 44, K = .28;                 // corpo de 120x90 em escala + espaço para os braços
     const FORMA0 = { w: 30, h: 40, inner: .14, outer: 0, smile: 0, dy: 0 };
     let olhos = {}, cores = { moldura: '#63e56f', casca: '#101512', tela: '#171e19', olho: '#3ee877', brilho: '#c8ffd8' };
-    let acess = {}, forma = { ...FORMA0 }, emocao = 'observando', boca = 0, t = 0;
+    let acess = {}, forma = { ...FORMA0 }, emocao = 'observando', boca = 0, t = 0, bracos = null;
+    // braços mecânicos (protótipo do usuário): quatro molas, uma por articulação
+    const bra = { ey: { v: 0, t: 0, vel: 0 }, dy: { v: 0, t: 0, vel: 0 }, ex: { v: 0, t: 0, vel: 0 }, dx: { v: 0, t: 0, vel: 0 } };
+    const passoBra = m => { m.vel += (m.t - m.v) * .1; m.vel *= .6; m.v += m.vel; };
     let piscada = 0, proxPiscada = 2, gx = 0, gy = 0, pontX = -1e4, pontY = -1e4;
     c.width = W * DPR(); c.height = H * DPR();
     document.addEventListener('pointermove', e => { pontX = e.clientX; pontY = e.clientY; });
@@ -348,6 +351,22 @@
       ctx.clearRect(0, 0, W, H);
       ctx.translate(W / 2, H / 2); ctx.scale(K, K);
       ctx.lineJoin = 'round';
+      if (bracos) {
+        // física do protótipo: gesticula com ondas assíncronas quando fala; em repouso, respira
+        for (const k in bra) passoBra(bra[k]);
+        const tm = performance.now();
+        if (respondendo) {
+          bra.ey.t = Math.sin(tm * .016) * 10 - boca * .3;
+          bra.dy.t = Math.cos(tm * .014) * 10 - boca * .3;
+          if (Math.random() < .05) { bra.ex.t = -Math.random() * 12; bra.dx.t = Math.random() * 12; }
+        } else {
+          bra.ey.t = bra.dy.t = Math.sin(tm * .003) * 2;
+          bra.ex.t = bra.dx.t = 0;
+        }
+        ctx.fillStyle = '#1e222b'; ctx.strokeStyle = bracos; ctx.lineWidth = 5;
+        ctx.save(); ctx.translate(-72 + bra.ex.v, 55 + bra.ey.v); rr(-24, -10, 32, 20, 10); ctx.fill(); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.translate(72 + bra.dx.v, 55 + bra.dy.v); rr(-8, -10, 32, 20, 10); ctx.fill(); ctx.stroke(); ctx.restore();
+      }
       ctx.fillStyle = cores.casca; ctx.strokeStyle = cores.moldura; ctx.lineWidth = 5;
       rr(-60, -45, 120, 90, 20); ctx.fill(); ctx.stroke();
       ctx.fillStyle = cores.tela; rr(-49, -34, 98, 68, 12); ctx.fill();
@@ -410,6 +429,7 @@
         olhos = d.olhos || olhos;
         cores = { ...cores, ...(d.cores || {}) };
         acess = d.acessorios || {};
+        bracos = d.bracos || null;
       },
       definirEmocao(nome) { emocao = nome || 'observando'; },
     };

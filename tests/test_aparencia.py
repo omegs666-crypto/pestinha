@@ -53,11 +53,35 @@ def pixels_de(img, cor, tolerancia=40):
 
 
 def test_bryan_continua_com_o_visual_original():
-    assert "aparencia" not in config.load_pet(PATHS, "bryan")
     a = aparencia_de(config.load_pet(PATHS, "bryan").get("aparencia"))
     assert (a.moldura, a.casca, a.tela, a.olho, a.brilho) == (FRAME, SHELL, SCREEN, EYE, SHINE)
     assert a.acessorios == ()
-    assert pintar(a) == pintar(PADRAO)
+    assert pintar(a) == pintar(PADRAO)          # sem as molas dos braços, o rosto é o de sempre
+
+
+def test_bryan_ganhou_bracos_mecanicos():
+    a = aparencia_de(config.load_pet(PATHS, "bryan")["aparencia"])
+    assert a.bracos == FRAME                    # braços com o contorno na cor da moldura
+    from pestinha.body.bracos import Bracos
+    img = QImage(WIN, WIN, QImage.Format_ARGB32)
+    img.fill(0)
+    p = QPainter(img)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.translate(CX, CY)
+    draw_face(p, dict(EYE_SHAPES["observando"]), (0.0, 0.0), 1.0, "observando",
+              aparencia=a, bracos=Bracos())
+    p.end()
+    laterais = [x for x, _y in pixels_de(img, FRAME)]
+    assert any(x > CX + 70 for x in laterais)   # contorno do braço além do corpo (que acaba em +60)
+    assert any(x < CX - 70 for x in laterais)
+
+
+def test_bracos_so_com_valor_valido():
+    assert aparencia_de({}).bracos is None
+    assert aparencia_de({"bracos": False}).bracos is None
+    assert aparencia_de({"bracos": "azul"}).bracos is None
+    assert aparencia_de({"bracos": "#112233"}).bracos == QColor("#112233")
+    assert aparencia_de({"moldura": "#abcdef", "bracos": True}).bracos == QColor("#abcdef")
 
 
 def test_valor_invalido_fica_com_o_padrao():
