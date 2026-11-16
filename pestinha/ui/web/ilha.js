@@ -36,7 +36,7 @@
 
   let ponte = null;
   let modoTopo = true;                    // encostada no topo da tela (false: livre, arrastável)
-  const DESGRUDAR_PX = 18;                // puxar a barra este tanto para baixo a solta do topo
+  const DESGRUDAR_PX = 14;                // puxar este tanto para baixo a solta do topo
   let estado = {};
   let aberta = false, fixada = false, vista = 'home';
   let timerAbrir = null, timerFechar = null;
@@ -195,16 +195,17 @@
     clearTimeout(timerAbrir);
     if (!arrastando) agendarRecolher();
   });
-  // Arrastar: segurar a barra e mover leva a pílula para qualquer lugar da tela (a janela acompanha).
+  // Arrastar: segurar a barra, a alça da tira ou qualquer área vazia do painel move a ilha.
+  // Encostada no topo ela desliza na horizontal; uma puxada clara para baixo a solta ("desgrudar").
   // Passou de 4 px vira arraste; o clique que vem logo depois é ignorado.
   let arraste = null, arrastou = false;
-  const comecarArraste = e => {
-    if (e.button !== 0) return;
+  const SEM_ARRASTE = 'button, input, select, textarea, label, a, canvas, iframe, [contenteditable], ' +
+    '.trilho, .mensagens, .composer, .falas, .escolha-lista, .reacoes-lista, .regra, .gv-lista';
+  nucleo.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || arraste || e.target.closest(SEM_ARRASTE)) return;
     arraste = { x: e.screenX, y: e.screenY, sx: e.screenX, sy: e.screenY };
     arrastou = false;
-  };
-  $('#barra').addEventListener('pointerdown', comecarArraste);
-  $('#alca-dock').addEventListener('pointerdown', comecarArraste);   // a alça da tira também arrasta
+  });
   document.addEventListener('pointermove', e => {
     if (!arraste) return;
     const dx = e.screenX - arraste.x, dy = e.screenY - arraste.y;
@@ -213,9 +214,12 @@
     arrastou = true;
     arraste.x = e.screenX; arraste.y = e.screenY;
     if (modoTopo) {
-      // encostada no topo: só desgruda ao puxar para baixo; arrastar de lado não move nada
+      // encostada no topo: desliza na horizontal; desgruda só com puxada clara para baixo (diagonal conta)
       const tx = e.screenX - arraste.sx, ty = e.screenY - arraste.sy;
-      if (ty < DESGRUDAR_PX || ty < Math.abs(tx)) return;
+      if (ty < DESGRUDAR_PX || ty < Math.abs(tx) * .6) {
+        if (dx && ponte) ponte.arrastar(Math.round(dx), 0);
+        return;
+      }
       aplicarModo(false);
       if (ponte) ponte.desgrudar();
       nucleo.classList.add('soltando');

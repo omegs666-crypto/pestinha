@@ -97,7 +97,11 @@ class WebIlha(QWidget):
             self.move(*limitar_posicao(x, y, tela, largura, altura, self._regiao))
             return
         tela = self.screen().geometry() if self.screen() else QGuiApplication.primaryScreen().geometry()
-        self.move(*posicao_topo(tela, largura))
+        x_topo, y_topo = posicao_topo(tela, largura)
+        if dados and dados[2] == "topo":
+            # deslizada pelo topo: volta para onde estava, sempre dentro da tela
+            x_topo = limitar_posicao(dados[0], y_topo, tela, largura, altura, self._regiao)[0]
+        self.move(x_topo, y_topo)
 
     # ----- modo: encostada no topo ou livre -----
     def desgrudar(self):
@@ -119,10 +123,13 @@ class WebIlha(QWidget):
                 self._encaixar(tela)
         self.salvar_posicao()
 
-    # ----- arrastar: a cápsula livre vai para onde você quiser, e a posição fica salva -----
+    # ----- arrastar: a cápsula vai para onde você quiser, e a posição fica salva -----
     def mover_por(self, dx, dy):
-        if self.modo != "livre":          # encostada no topo só se move depois de desgrudar
-            return
+        if self.modo == "topo":
+            # encostada: desliza na horizontal pelo topo; subir/descer só depois de desgrudar
+            dy = 0
+            if not dx:
+                return
         destino = QPoint(self.x() + dx, self.y() + dy)
         tela = (QGuiApplication.screenAt(destino) or self.screen()).geometry()
         self.move(*limitar_posicao(destino.x(), destino.y(), tela, self.width(), self.height(), self._regiao))
