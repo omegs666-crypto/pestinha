@@ -65,6 +65,7 @@ class Ponte(QObject):
     desgrudou = Signal()            # a pílula saiu do topo (o usuário a puxou para baixo)
     modo_mudou = Signal(str)        # "topo" (encostada) ou "livre"
     gesto = Signal(str)             # interação no pet Qt ("cutucada"|"carinho"|"arremesso") p/ o mascote reagir
+    emocao = Signal(str)            # a emoção mudou AGORA (o snapshot de 500 ms chegaria atrasado)
 
     def __init__(self, app, parent=None):
         super().__init__(parent)

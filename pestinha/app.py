@@ -502,8 +502,11 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         if emotion != self._c2["emocao"]:
             self._c2["emocao"] = emotion
             self._evento(emotion)                      # fala a emoção nova (balão e, se ligada, em voz)
-        st.boca.passo(self.voz._falando)           # a boca mexe enquanto a Voz fala
-        st.bracos.passo(self.voz._falando, st.boca.abertura.valor, emotion)   # e os braços gesticulam junto
+            ponte = getattr(getattr(self, "ilha", None), "ponte", None)
+            if ponte is not None:
+                ponte.emocao.emit(emotion)             # o mascote troca de cara/gestos na hora, sem esperar o snapshot
+        st.boca.passo(self.voz._falando)   # a boca fica no ritmo de sempre (10 Hz) -
+        # os BRAÇOS não: eles avançam em frame(), a 60 fps, junto do desenho
         self._segundo_cerebro_estados()
 
     def frame(self):
@@ -559,6 +562,8 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
                                for g in (t.geometry() for t in self.mischief.things if not t.carried)])
         self.behavior.toy = (self.ball.body.x, self.ball.body.y) if self.ball.isVisible() else None
         self.mischief.tick(dt, bounds[3])
+        st = self.pet_state
+        st.bracos.passo(self.voz._falando, st.boca.abertura.valor, st.emotion)   # braços a 60 fps; a boca segue no think
         self.pet.animate(now)
         self.maybe_mischief(now, dt, bounds, cursor, motores)
 

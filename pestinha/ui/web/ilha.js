@@ -328,9 +328,9 @@
     //   amortecimento: atrito por frame (perto de 1 = seco; baixo = quica, inércia)
     // ============================================================================
     const BRACO_CFG = {
-      rigPos: .16, amoPos: .72,      // posição: snap rápido + quica leve (espelha bracos.py)
-      rigRot: .13, amoRot: .70,      // rotação: pêndulo sem rabo de balanço
-      rigSq: .22, amoSq: .70,        // squash: deforma e volta num flash
+      rigPos: .20, amoPos: .66,      // posição: 90% em ~67 ms, quica de ~15% (fluido, não gelatinoso)
+      rigRot: .18, amoRot: .66,      // rotação: pêndulo colado no gesto
+      rigSq: .26, amoSq: .66,        // squash: deforma e volta num flash
       ganhoRot: .55, ganhoSq: .05, sqMax: .30,
       idleAmp: 4, idleFreq: 3, idleFase: 1.3, idleSway: 1.8,
       falaAmp: 14, falaFreqE: 16, falaFreqD: 14, ganhoBoca: .3,
@@ -358,7 +358,7 @@
       },
     });
     const bra = { esq: bracoB(-1), dir: bracoB(1) };
-    const pulo = molaB(.16, .72);               // o mascote pula quando o pet é cutucado/arremessado
+    const pulo = molaB(.20, .66);               // o mascote pula quando o pet é cutucado/arremessado
     let piscada = 0, proxPiscada = 2, gx = 0, gy = 0, pontX = -1e4, pontY = -1e4;
     let felizFechado = false, carinhoAte = 0;   // carinho: olhinhos ^^ + corações (estado ou gesto)
     let esfrega = [], ultimoCarinho = 0;        // esfregar o mouse no mascote = carinho (como no pet)
@@ -1503,6 +1503,7 @@
       ponte.voz_estado.connect(s => { $('#ouvir').textContent = s === 'ouvindo' ? 'Ouvindo… (clique p/ parar)' : s === 'transcrevendo' ? 'Entendendo…' : 'Falar'; });
       ponte.voz_modelo.connect(aoModeloVoz);
       ponte.gesto.connect(a => mascote.aoGesto(a));
+      ponte.emocao.connect(a => mascote.definirEmocao(a));   // emoção instantânea, sem o atraso do snapshot
       ponte.voz_download.connect(p => { $('#voz-progresso').textContent = p + '%'; });
       ponte.obter_estado(s => aplicarEstado(JSON.parse(s)));
       ponte.listar_modelos();

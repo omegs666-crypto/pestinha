@@ -35,12 +35,12 @@ from .boca import Mola
 # amortecimento (damping): atrito por passo.
 #   perto de 1 = movimento curto e seco; baixo = quica muito (inércia longa).
 # ============================================================================
-RIGIDEZ_POS = 0.16       # posição: snap rápido (50% do alvo em ~33 ms) - mais = mais seco/robótico
-AMORT_POS = 0.72         # posição: quica leve de ~20% e assenta; subir = mais balanço (lelelê)
-RIGIDEZ_ROT = 0.13       # rotação: pêndulo acompanha o gesto sem arrastar
-AMORT_ROT = 0.70         # rotação: para de oscilar rápido, sem rabo de balanço
-RIGIDEZ_SQ = 0.22        # squash: deforma e volta num flash
-AMORT_SQ = 0.70          # squash: não fica tremendo depois do gesto
+RIGIDEZ_POS = 0.20       # posição: 90% do alvo em ~67 ms - acompanha o gesto sem atraso
+AMORT_POS = 0.66         # posição: quica de só ~15% - fluido, não gelatinoso (subir = mais lelelê)
+RIGIDEZ_ROT = 0.18       # rotação: pêndulo acompanha o gesto de perto
+AMORT_ROT = 0.66         # rotação: sem rabo de balanço depois do gesto
+RIGIDEZ_SQ = 0.26        # squash: deforma e volta num flash
+AMORT_SQ = 0.66          # squash: não fica tremendo depois do gesto
 
 GANHO_ROT = 0.55         # quanto a velocidade X vira inclinação (alto = pêndulo exagerado)
 GANHO_SQ = 0.05          # quanto a energia do movimento vira deformação
