@@ -64,6 +64,7 @@ class Ponte(QObject):
     envelope = Signal(str)          # volume da fala do LLM ao longo do tempo (para a vibração do chat)
     desgrudou = Signal()            # a pílula saiu do topo (o usuário a puxou para baixo)
     modo_mudou = Signal(str)        # "topo" (encostada) ou "livre"
+    gesto = Signal(str)             # interação no pet Qt ("cutucada"|"carinho"|"arremesso") p/ o mascote reagir
 
     def __init__(self, app, parent=None):
         super().__init__(parent)
@@ -213,6 +214,14 @@ class Ponte(QObject):
             "olhos": EYE_SHAPES,
         })
 
+    @Slot(str)
+    def mascote_interacao(self, acao):
+        """O mascote da ilha é o mesmo pet: o gesto dele entra pelos mesmos caminhos do pet Qt."""
+        alvo = {"cutucada": "on_poke", "carinho": "menu_caress", "carinho_forte": "on_double_click"}.get(acao)
+        fn = getattr(self.app, alvo or "", None)
+        if fn:
+            fn()
+
     @Slot(int, int, int, int)
     def definir_regiao(self, x, y, largura, altura):
         def lim(v):
@@ -282,6 +291,7 @@ class Ponte(QObject):
             "estimulacao": _percentual(getattr(drives, "stimulation", 0.0)),
             "insatisfacao": _percentual(getattr(getattr(self.app, "protest", None), "grievance", 0.0)),
             "atividade": atividade,
+            "carinho": bool(getattr(estado, "feliz_fechado", lambda *a: False)()) if estado else False,
             "pausado": bool(getattr(self.app, "paused", False)),
             "voz": bool(self.app.perms.get("voz")),
             "travessuras": bool(self.app.perms.get("travessuras")),

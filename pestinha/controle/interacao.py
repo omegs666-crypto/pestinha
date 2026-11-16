@@ -23,6 +23,12 @@ from ..ajustes import (
 
 class InteracaoMixin:
     """Ações do usuário sobre o pet: cutucar, arrastar, arremessar, dispensar travessuras e o menu do botão direito. Vira atributo de PestinhaApp."""
+    def _gesto_ilha(self, acao):
+        """Espelha a interação no mascote da ilha: as duas visões do pet reagem ao mesmo gesto."""
+        ponte = getattr(getattr(self, "ilha", None), "ponte", None)
+        if ponte is not None:
+            ponte.gesto.emit(acao)
+
     def on_poke(self):
         """Você cutucou o pet: ele reage e a rede recebe o toque (ignorado na pausa)."""
         if self._congelado():
@@ -44,6 +50,7 @@ class InteracaoMixin:
             self.sleep.wake(startled=True)
         # a reação NÃO é fixa: mede-se o que a rede fez com a cutucada (ver poke_reflex)
         self.poke_probe = (now + POKE_PROBE, self.brain.motor_activity()["CHEER"])
+        self._gesto_ilha("cutucada")
 
     def on_double_click(self):
         """Dois cliques rápidos: carinho instantâneo — olhinhos fecham de felicidade e corações sobem."""
@@ -58,6 +65,7 @@ class InteracaoMixin:
         self.memory.on_interaction()
         self.cerebro2.registrar("duplo clique (carinho)")
         self._reagiu(now, "carinho")
+        self._gesto_ilha("carinho")
         if self.asleep:
             self.sleep.wake(started=True)
 
@@ -110,6 +118,7 @@ class InteracaoMixin:
         self.cerebro2.registrar(f"arremesso ({speed:.0f} px/s)")
         self.in_flight = True
         self._evento("arremesso")
+        self._gesto_ilha("arremesso")
 
     def on_dismissed(self, thing, elapsed):
         """Você dispensou uma travessura: ela some, e o tempo até você fechar vira aprendizado (fechar rápido é pior)."""
@@ -177,6 +186,7 @@ class InteracaoMixin:
         self.memory.on_interaction()
         self.timeline.note_interaction()
         self._reagiu(time.monotonic(), "carinho")
+        self._gesto_ilha("carinho")
 
     def menu_place_ball(self):
         """Menu: 'Pôr a bolinha' (coloca a bolinha perto do pet, no chão)."""

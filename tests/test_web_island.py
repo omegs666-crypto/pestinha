@@ -278,6 +278,32 @@ def test_snapshot_traz_a_emocao_como_chave(tmp_path):
     assert Ponte(app).snapshot()["emocao_chave"] == "feliz"
 
 
+def test_snapshot_traz_o_carinho_do_pet(tmp_path):
+    """O mascote precisa saber quando o pet está com os olhinhos fechados de carinho."""
+    _qt()
+    app = FakeApp(tmp_path)
+    app.pet_state = SimpleNamespace(emotion="contente", tone=None, feliz_fechado=lambda: True)
+    assert Ponte(app).snapshot()["carinho"] is True
+    app.pet_state = SimpleNamespace(emotion="observando", tone=None)
+    assert Ponte(app).snapshot()["carinho"] is False
+
+
+def test_gesto_do_mascote_entra_pelos_mesmos_caminhos_do_pet(tmp_path):
+    """Cutucada, carinho e carinho instantâneo no mascote chamam as ações do pet."""
+    _qt()
+    app = FakeApp(tmp_path)
+    app.on_poke = lambda: app.chamadas.append("cutucada")
+    app.menu_caress = lambda: app.chamadas.append("carinho")
+    app.on_double_click = lambda: app.chamadas.append("carinho_forte")
+    ponte = Ponte(app)
+    ponte.mascote_interacao("cutucada")
+    ponte.mascote_interacao("carinho")
+    ponte.mascote_interacao("carinho_forte")
+    ponte.mascote_interacao("desconhecida")
+    assert app.chamadas == ["cutucada", "carinho", "carinho_forte"]
+    ponte.shutdown()
+
+
 def _js(ilha, codigo):
     """Roda JS na página da ilha e devolve o resultado (espera o carregamento antes)."""
     laco = QEventLoop()

@@ -358,7 +358,10 @@
       },
     });
     const bra = { esq: bracoB(-1), dir: bracoB(1) };
+    const pulo = molaB(.14, .55);               // o mascote pula quando o pet é cutucado/arremessado
     let piscada = 0, proxPiscada = 2, gx = 0, gy = 0, pontX = -1e4, pontY = -1e4;
+    let felizFechado = false, carinhoAte = 0;   // carinho: olhinhos ^^ + corações (estado ou gesto)
+    let esfrega = [], ultimoCarinho = 0;        // esfregar o mouse no mascote = carinho (como no pet)
     c.width = W * DPR(); c.height = H * DPR();
     document.addEventListener('pointermove', e => { pontX = e.clientX; pontY = e.clientY; });
 
@@ -382,7 +385,8 @@
 
       ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
       ctx.clearRect(0, 0, W, H);
-      ctx.translate(W / 2, H / 2); ctx.scale(K, K);
+      passoBra(pulo);                                     // a mola do pulo anda todo frame
+      ctx.translate(W / 2, H / 2 + pulo.v * K); ctx.scale(K, K);
       ctx.lineJoin = 'round';
       if (bracos) {
         // estados: gesticula na fala (ondas + impulsos de velocidade); em repouso, gesto da emoção
@@ -457,7 +461,21 @@
       rr(-60, -45, 120, 90, 20); ctx.fill(); ctx.stroke();
       ctx.fillStyle = cores.tela; rr(-49, -34, 98, 68, 12); ctx.fill();
 
-      for (const lado of [-1, 1]) {
+      const carinhoOn = felizFechado || performance.now() < carinhoAte;
+      if (carinhoOn) {                                    // carinho: olhinhos fechados de felicidade (^ ^)
+        ctx.strokeStyle = cores.olho; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        for (const lado of [-1, 1]) {
+          ctx.beginPath(); ctx.arc(lado * 24, forma.dy + 4, 14, Math.PI, 0); ctx.stroke();
+        }
+        ctx.fillStyle = '#ff6b8a';                        // corações subindo, como no pet Qt
+        ctx.font = '11px "Segoe UI Emoji"'; ctx.textAlign = 'center';
+        for (let i = 0; i < 6; i++) {
+          const ciclo = (t * .45 + i * .173) % 1;
+          ctx.globalAlpha = Math.min(1, ciclo * 6) * (1 - ciclo);
+          ctx.fillText('♥', -45 + (i * 37) % 90 + 4 * Math.sin(t * 2 + i), 30 - ciclo * 85);
+        }
+        ctx.globalAlpha = 1;
+      } else for (const lado of [-1, 1]) {
         const w = forma.w;
         let h = forma.h * pisco;
         if (emocao === 'curioso' && lado === 1) h *= 1.15;
@@ -508,7 +526,30 @@
       requestAnimationFrame(quadro);
     }
     requestAnimationFrame(quadro);
-    c.addEventListener('click', () => { if (arrastou) return; abrir(!aberta); });
+    // o mascote é o próprio pet: clique cutuca, esfregar faz carinho, duplo clique carinho instantâneo
+    c.addEventListener('click', () => { if (arrastou) return; if (ponte) ponte.mascote_interacao('cutucada'); });
+    c.addEventListener('dblclick', () => {
+      if (ponte) ponte.mascote_interacao('carinho_forte');
+      carinhoAte = performance.now() + 1500;              // corações na hora, sem esperar o estado
+    });
+    c.addEventListener('pointermove', e => {              // carinho = vai-e-vem do mouse, igual ao pet
+      const agora = performance.now() / 1000;
+      esfrega.push([agora, e.clientX]);
+      esfrega = esfrega.filter(r => agora - r[0] < .7);
+      let reversos = 0, viagem = 0, dir = 0;
+      for (let i = 1; i < esfrega.length; i++) {
+        const passo = esfrega[i][1] - esfrega[i - 1][1];
+        if (Math.abs(passo) < 2) continue;
+        const d = passo > 0 ? 1 : -1;
+        if (dir && d !== dir) reversos++;
+        dir = d; viagem += Math.abs(passo);
+      }
+      if (reversos >= 3 && viagem >= 60 && agora * 1000 - ultimoCarinho > 400) {
+        ultimoCarinho = agora * 1000;
+        carinhoAte = agora * 1000 + 900;
+        if (ponte) ponte.mascote_interacao('carinho');
+      }
+    });
 
     return {
       configurar(d) {
@@ -518,6 +559,12 @@
         bracos = d.bracos || null;
       },
       definirEmocao(nome) { emocao = nome || 'observando'; },
+      definirCarinho(v) { felizFechado = !!v; },
+      aoGesto(a) {                                        // gesto no pet Qt: o mascote reage junto
+        if (a === 'cutucada') pulo.vel -= 55;
+        else if (a === 'arremesso') pulo.vel -= 90;
+        else if (a === 'carinho') carinhoAte = performance.now() + 1500;
+      },
     };
   })();
 
@@ -847,6 +894,7 @@
     $('#pet-nome').textContent = estado.pet || 'Pestinha';
     $('#pet-emocao').textContent = (estado.emocao || '—').toLowerCase();
     mascote.definirEmocao(estado.emocao_chave);
+    mascote.definirCarinho(estado.carinho);
     $('#st-energia').textContent = (estado.energia ?? 0) + '%';
     $('#st-estimulo').textContent = (estado.estimulacao ?? 0) + '%';
     $('#st-insatisfacao').textContent = (estado.insatisfacao ?? 0) + '%';
@@ -1426,6 +1474,7 @@
       ponte.envelope.connect(s => vibra.falar(JSON.parse(s), 'modelo'));
       ponte.voz_estado.connect(s => { $('#ouvir').textContent = s === 'ouvindo' ? 'Ouvindo… (clique p/ parar)' : s === 'transcrevendo' ? 'Entendendo…' : 'Falar'; });
       ponte.voz_modelo.connect(aoModeloVoz);
+      ponte.gesto.connect(a => mascote.aoGesto(a));
       ponte.voz_download.connect(p => { $('#voz-progresso').textContent = p + '%'; });
       ponte.obter_estado(s => aplicarEstado(JSON.parse(s)));
       ponte.listar_modelos();
