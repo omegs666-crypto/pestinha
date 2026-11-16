@@ -322,9 +322,33 @@
     const FORMA0 = { w: 30, h: 40, inner: .14, outer: 0, smile: 0, dy: 0 };
     let olhos = {}, cores = { moldura: '#63e56f', casca: '#101512', tela: '#171e19', olho: '#3ee877', brilho: '#c8ffd8' };
     let acess = {}, forma = { ...FORMA0 }, emocao = 'observando', boca = 0, t = 0, bracos = null;
-    // braços mecânicos (protótipo do usuário): quatro molas, uma por articulação
-    const bra = { ey: { v: 0, t: 0, vel: 0 }, dy: { v: 0, t: 0, vel: 0 }, ex: { v: 0, t: 0, vel: 0 }, dx: { v: 0, t: 0, vel: 0 } };
-    const passoBra = m => { m.vel += (m.t - m.v) * .1; m.vel *= .6; m.v += m.vel; };
+    // ============================================================================
+    // BRAÇOS - física massa-mola (mesma do body/bracos.py; AJUSTE OS PESOS AQUI)
+    //   rigidez: força do retorno ao alvo (alta = braço pesado/duro)
+    //   amortecimento: atrito por frame (perto de 1 = seco; baixo = quica, inércia)
+    // ============================================================================
+    const BRACO_CFG = {
+      rigPos: .10, amoPos: .60,      // posição: resposta média, balanço moderado
+      rigRot: .07, amoRot: .55,      // rotação: pêndulo mole, oscila antes de parar
+      rigSq: .16, amoSq: .55,        // squash: deforma rápido, elasticidade quica
+      ganhoRot: .9, ganhoSq: .06, sqMax: .35,
+      idleAmp: 2, idleFreq: .003, idleFase: 1.3,
+      falaAmp: 10, ganhoBoca: .3,
+      impulsoP: .05, impulsoX: 3, impulsoY: 4, impulsoAlcance: 12,
+    };
+    const molaB = (rig, amo) => ({ v: 0, t: 0, vel: 0, rig, amo });
+    const passoBra = m => { m.vel += (m.t - m.v) * m.rig; m.vel *= m.amo; m.v += m.vel; };
+    const bracoB = lado => ({
+      lado,
+      x: molaB(BRACO_CFG.rigPos, BRACO_CFG.amoPos), y: molaB(BRACO_CFG.rigPos, BRACO_CFG.amoPos),
+      rot: molaB(BRACO_CFG.rigRot, BRACO_CFG.amoRot), sq: molaB(BRACO_CFG.rigSq, BRACO_CFG.amoSq),
+      fisica() {
+        passoBra(this.x); passoBra(this.y); passoBra(this.rot); passoBra(this.sq);
+        this.rot.t = -this.lado * this.x.vel * BRACO_CFG.ganhoRot;              // pêndulo: inclina com o movimento
+        this.sq.t = 1 + Math.min(BRACO_CFG.sqMax, (Math.abs(this.x.vel) + Math.abs(this.y.vel)) * BRACO_CFG.ganhoSq);
+      },
+    });
+    const bra = { esq: bracoB(-1), dir: bracoB(1) };
     let piscada = 0, proxPiscada = 2, gx = 0, gy = 0, pontX = -1e4, pontY = -1e4;
     c.width = W * DPR(); c.height = H * DPR();
     document.addEventListener('pointermove', e => { pontX = e.clientX; pontY = e.clientY; });
@@ -352,20 +376,32 @@
       ctx.translate(W / 2, H / 2); ctx.scale(K, K);
       ctx.lineJoin = 'round';
       if (bracos) {
-        // física do protótipo: gesticula com ondas assíncronas quando fala; em repouso, respira
-        for (const k in bra) passoBra(bra[k]);
-        const tm = performance.now();
+        // estados: gesticula na fala (ondas assíncronas + impulsos de velocidade); em repouso, respira
+        bra.esq.fisica(); bra.dir.fisica();
+        const tm = performance.now(), C = BRACO_CFG;
         if (respondendo) {
-          bra.ey.t = Math.sin(tm * .016) * 10 - boca * .3;
-          bra.dy.t = Math.cos(tm * .014) * 10 - boca * .3;
-          if (Math.random() < .05) { bra.ex.t = -Math.random() * 12; bra.dx.t = Math.random() * 12; }
+          bra.esq.y.t = Math.sin(tm * .016) * C.falaAmp - boca * C.ganhoBoca;
+          bra.dir.y.t = Math.cos(tm * .014) * C.falaAmp - boca * C.ganhoBoca;
+          if (Math.random() < C.impulsoP) {                    // pico de gesto: impulso na velocidade (inércia)
+            bra.esq.x.vel -= Math.random() * C.impulsoX; bra.dir.x.vel += Math.random() * C.impulsoX;
+            bra.esq.y.vel -= Math.random() * C.impulsoY; bra.dir.y.vel -= Math.random() * C.impulsoY;
+            bra.esq.x.t = -Math.random() * C.impulsoAlcance; bra.dir.x.t = Math.random() * C.impulsoAlcance;
+          }
         } else {
-          bra.ey.t = bra.dy.t = Math.sin(tm * .003) * 2;
-          bra.ex.t = bra.dx.t = 0;
+          bra.esq.y.t = Math.sin(tm * C.idleFreq) * C.idleAmp;
+          bra.dir.y.t = Math.sin(tm * C.idleFreq + C.idleFase) * C.idleAmp;      // fases diferentes: nunca em espelho
+          bra.esq.x.t = bra.dir.x.t = 0;
         }
+        // renderização: translate (posição) -> rotate (pêndulo) -> scale (squash & stretch no Y)
         ctx.fillStyle = '#1e222b'; ctx.strokeStyle = bracos; ctx.lineWidth = 5;
-        ctx.save(); ctx.translate(-72 + bra.ex.v, 55 + bra.ey.v); rr(-24, -10, 32, 20, 10); ctx.fill(); ctx.stroke(); ctx.restore();
-        ctx.save(); ctx.translate(72 + bra.dx.v, 55 + bra.dy.v); rr(-8, -10, 32, 20, 10); ctx.fill(); ctx.stroke(); ctx.restore();
+        for (const b of [bra.esq, bra.dir]) {
+          ctx.save();
+          ctx.translate(b.lado * 72 + b.x.v, 55 + b.y.v);
+          ctx.rotate(b.rot.v * Math.PI / 180);
+          ctx.scale(1 / b.sq.v, b.sq.v);
+          rr(b.lado * 8 - 16, -10, 32, 20, 10); ctx.fill(); ctx.stroke();
+          ctx.restore();
+        }
       }
       ctx.fillStyle = cores.casca; ctx.strokeStyle = cores.moldura; ctx.lineWidth = 5;
       rr(-60, -45, 120, 90, 20); ctx.fill(); ctx.stroke();

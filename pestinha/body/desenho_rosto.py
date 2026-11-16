@@ -108,18 +108,24 @@ def draw_face(p, shape, gaze=(0.0, 0.0), blink=1.0, emotion="observando", carinh
 
 
 def _bracos(p, cor, bracos):
-    """Os braços mecânicos: cápsulas escuras com contorno neon, nas laterais, seguindo as molas."""
+    """Os braços mecânicos: cápsulas escuras com contorno neon, pendulares e elásticas."""
     metal = QColor("#1e222b")
     p.setBrush(metal)
     p.setPen(QPen(cor, 5))
-    p.save()
-    p.translate(-72 + bracos.esq_x.valor, 55 + bracos.esq_y.valor)     # ±72: cabe na janela de 200 px
-    p.drawRoundedRect(QRectF(-24, -10, 32, 20), 10, 10)
-    p.restore()
-    p.save()
-    p.translate(72 + bracos.dir_x.valor, 55 + bracos.dir_y.valor)
-    p.drawRoundedRect(QRectF(-8, -10, 32, 20), 10, 10)
-    p.restore()
+    for lado, braco in ((-1, bracos.esq), (1, bracos.dir)):
+        # ============================================================================
+        # RENDERIZAÇÃO - a ordem das transformações decide como a física aparece
+        # ----------------------------------------------------------------------------
+        # 1. translate: a mola de posição move a âncora (±72 cabe na janela de 200 px)
+        # 2. rotate: a mola pendular inclina a cápsula no sentido do movimento
+        # 3. scale: squash & stretch preservando volume (estica num eixo, encolhe no outro)
+        # ============================================================================
+        p.save()
+        p.translate(lado * 72 + braco.x.valor, 55 + braco.y.valor)
+        p.rotate(braco.rot.valor)
+        p.scale(1.0 / braco.squash.valor, braco.squash.valor)      # o gesto é vertical: estica no Y
+        p.drawRoundedRect(QRectF(lado * 8 - 16, -10, 32, 20), 10, 10)
+        p.restore()
 
 
 def _boca(p, boca, a):
