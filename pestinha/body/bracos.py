@@ -99,6 +99,24 @@ CURIO_TROCA = 0.35       # ritmo de troca de lado (Hz, bem lento)
 DRAMA_AMP = 14.0         # amplitude da varredura (px)
 DRAMA_FREQ = 4.0         # velocidade da varredura (rad/s)
 
+# ============================================================================
+# 4. REAÇÕES - gestos transitórios por ação (AJUSTE AQUI)
+# ----------------------------------------------------------------------------
+# Reação ≠ emoção: cutucada, carinho, arremesso... acontecem num instante e
+# muitas vezes nem mudam a emoção. Por isso cada ação tem um gesto com DURAÇÃO
+# própria que tem PRIORIDADE sobre o repouso - é o reflexo, igual ao pulo do
+# corpo na cutucada. Os impulsos entram em `reagir()` (velocidade = inércia).
+# ============================================================================
+REACAO_DUR = {
+    "cutucada": 0.7,     # recuo: as duas mãos voam para cima e para fora
+    "carinho": 1.4,      # abraço: mãos sobem e vêm para o rosto, remexendo
+    "arremesso": 1.3,    # moinho: os dois braços giram em pânico no ar
+    "dispensa": 0.8,     # um braço empurra a travessura para longe
+    "preso": 1.0,        # batendo nas paredes do cantinho, alternado
+    "fuga": 1.0,         # a mesma debandada do arremesso, mais curta
+    "assustado": 0.7,    # sobressalto: mãos para cima e abertas
+}
+
 
 class Braco:
     """Um braço: as quatro molas e o lado (para desenhar e assinar o pêndulo)."""
@@ -127,12 +145,36 @@ class Bracos:
     def __init__(self):
         self.esq = Braco(-1)
         self.dir = Braco(1)
+        self._reacao = None                       # (acao, t0) do gesto transitório em curso
+
+    def reagir(self, acao):
+        """Uma ação do app vira gesto reflexo nos braços. Devolve True se a ação tem gesto."""
+        if acao not in REACAO_DUR:
+            return False
+        self._reacao = (acao, time.monotonic())
+        # o arranque do gesto é um impulso na VELOCIDADE - é o que dá o "solavanco"
+        if acao == "cutucada":
+            self.esq.y.vel -= 8; self.dir.y.vel -= 8
+            self.esq.x.vel -= 4; self.dir.x.vel += 4
+        elif acao == "assustado":
+            self.esq.y.vel -= 10; self.dir.y.vel -= 10
+        elif acao == "arremesso":
+            self.esq.y.vel -= 6; self.dir.y.vel -= 6
+        elif acao == "dispensa":
+            self.dir.x.vel += 8                       # só o direito "empurra" a travessura
+        return True
 
     def passo(self, falando, boca=0.0, emocao="observando"):
         """Um passo de física por frame; os alvos mudam com a fala, a boca e a emoção."""
         self.esq.fisica()
         self.dir.fisica()
         t = time.monotonic()
+        if self._reacao is not None:
+            acao, t0 = self._reacao
+            if t - t0 <= REACAO_DUR[acao]:
+                self._gesto(acao, t)
+                return                                     # o reflexo tem prioridade sobre tudo
+            self._reacao = None
         if falando:
             # gesticulação: ondas assíncronas + ênfase da boca, temperadas pela emoção
             energia = EMOCAO_ENERGIA.get(emocao, 0.8)
@@ -149,6 +191,37 @@ class Bracos:
                 self.dir.x.alvo = random.uniform(0, IMPULSO_ALCANCE)
         else:
             self._repouso(emocao, t)
+
+    def _gesto(self, acao, t):
+        """Os alvos de cada reação transitória - a física resolve o arco e o squash."""
+        if acao == "cutucada":
+            # "ai!": mãos para cima e para fora por um instante
+            self.esq.y.alvo = self.dir.y.alvo = -14.0
+            self.esq.x.alvo = -14.0; self.dir.x.alvo = 14.0
+        elif acao == "carinho":
+            # abraço/remexe feliz: sobem perto do rosto e chacoalham de leve
+            self.esq.y.alvo = -16.0 + math.sin(t * 14.0) * 3.0
+            self.dir.y.alvo = -16.0 + math.sin(t * 14.0 + 1.1) * 3.0
+            self.esq.x.alvo = 12.0; self.dir.x.alvo = -12.0       # para dentro, perto do rosto
+        elif acao in ("arremesso", "fuga"):
+            # moinho de pânico: os dois braços giram juntos
+            fase = t * 18.0
+            self.esq.x.alvo = self.dir.x.alvo = math.sin(fase) * 14.0
+            self.esq.y.alvo = self.dir.y.alvo = math.cos(fase) * 12.0 - 4.0
+        elif acao == "dispensa":
+            # o braço direito empurra a travessura para longe
+            self.dir.x.alvo = 20.0; self.dir.y.alvo = -6.0
+            self.esq.x.alvo = -6.0; self.esq.y.alvo = 4.0
+        elif acao == "preso":
+            # batendo nas paredes, alternado e insistente
+            self.esq.y.alvo = math.sin(t * 16.0) * 10.0
+            self.dir.y.alvo = -math.sin(t * 16.0) * 10.0
+            self.esq.x.alvo = 8.0; self.dir.x.alvo = -8.0
+        elif acao == "assustado":
+            # sobressalto: para cima, abertas, com tremor fino
+            self.esq.y.alvo = -16.0 + math.sin(t * 25.0) * 2.0
+            self.dir.y.alvo = -16.0 + math.sin(t * 25.0 + 0.7) * 2.0
+            self.esq.x.alvo = -12.0; self.dir.x.alvo = 12.0
 
     def _repouso(self, emocao, t):
         """O gesto de repouso muda com a emoção; o padrão é a respiração."""

@@ -362,6 +362,9 @@
     let piscada = 0, proxPiscada = 2, gx = 0, gy = 0, pontX = -1e4, pontY = -1e4;
     let felizFechado = false, carinhoAte = 0;   // carinho: olhinhos ^^ + corações (estado ou gesto)
     let esfrega = [], ultimoCarinho = 0;        // esfregar o mouse no mascote = carinho (como no pet)
+    // gestos transitórios por reação (espelha REACAO_DUR de bracos.py) - prioridade sobre o repouso
+    const REACAO_DUR = { cutucada: .7, carinho: 1.4, arremesso: 1.3, dispensa: .8, preso: 1, fuga: 1, assustado: .7 };
+    let braReacao = null;                       // {acao, t0} em segundos
     c.width = W * DPR(); c.height = H * DPR();
     document.addEventListener('pointermove', e => { pontX = e.clientX; pontY = e.clientY; });
 
@@ -392,7 +395,28 @@
         // estados: gesticula na fala (ondas + impulsos de velocidade); em repouso, gesto da emoção
         bra.esq.fisica(); bra.dir.fisica();
         const tm = performance.now() / 1000, C = BRACO_CFG;
-        if (respondendo) {
+        if (braReacao && tm - braReacao.t0 <= (REACAO_DUR[braReacao.acao] || 0)) {
+          // reflexo transitório: os mesmos alvos de _gesto em bracos.py
+          const a = braReacao.acao;
+          if (a === 'cutucada') {
+            bra.esq.y.t = bra.dir.y.t = -14; bra.esq.x.t = -14; bra.dir.x.t = 14;
+          } else if (a === 'carinho') {
+            bra.esq.y.t = -16 + Math.sin(tm * 14) * 3; bra.dir.y.t = -16 + Math.sin(tm * 14 + 1.1) * 3;
+            bra.esq.x.t = 12; bra.dir.x.t = -12;
+          } else if (a === 'arremesso' || a === 'fuga') {
+            const f = tm * 18;
+            bra.esq.x.t = bra.dir.x.t = Math.sin(f) * 14;
+            bra.esq.y.t = bra.dir.y.t = Math.cos(f) * 12 - 4;
+          } else if (a === 'dispensa') {
+            bra.dir.x.t = 20; bra.dir.y.t = -6; bra.esq.x.t = -6; bra.esq.y.t = 4;
+          } else if (a === 'preso') {
+            bra.esq.y.t = Math.sin(tm * 16) * 10; bra.dir.y.t = -Math.sin(tm * 16) * 10;
+            bra.esq.x.t = 8; bra.dir.x.t = -8;
+          } else if (a === 'assustado') {
+            bra.esq.y.t = -16 + Math.sin(tm * 25) * 2; bra.dir.y.t = -16 + Math.sin(tm * 25 + .7) * 2;
+            bra.esq.x.t = -12; bra.dir.x.t = 12;
+          }
+        } else if (respondendo) {
           const en = C.energia[emocao] ?? .8, amp = C.falaAmp * en;
           bra.esq.y.t = Math.sin(tm * C.falaFreqE) * amp - boca * C.ganhoBoca;
           bra.dir.y.t = Math.cos(tm * C.falaFreqD) * amp - boca * C.ganhoBoca;
@@ -402,6 +426,7 @@
             bra.esq.x.t = -Math.random() * C.impulsoAlcance; bra.dir.x.t = Math.random() * C.impulsoAlcance;
           }
         } else {
+          braReacao = null;                     // gesto acabou (ou não havia): volta ao repouso
           // repouso: cada emoção tem seu gesto (espelha _repouso de bracos.py)
           const resp = emocao === 'contente' ? 3 : C.idleAmp;
           // deriva lateral lenta: mesmo parado, o braço nunca congela
@@ -561,9 +586,12 @@
       definirEmocao(nome) { emocao = nome || 'observando'; },
       definirCarinho(v) { felizFechado = !!v; },
       aoGesto(a) {                                        // gesto no pet Qt: o mascote reage junto
-        if (a === 'cutucada') pulo.vel -= 55;
-        else if (a === 'arremesso') pulo.vel -= 90;
+        if (a in REACAO_DUR) braReacao = { acao: a, t0: performance.now() / 1000 };
+        if (a === 'cutucada') { pulo.vel -= 55; bra.esq.y.vel -= 8; bra.dir.y.vel -= 8; bra.esq.x.vel -= 4; bra.dir.x.vel += 4; }
+        else if (a === 'arremesso') { pulo.vel -= 90; bra.esq.y.vel -= 6; bra.dir.y.vel -= 6; }
         else if (a === 'carinho') carinhoAte = performance.now() + 1500;
+        else if (a === 'assustado') { bra.esq.y.vel -= 10; bra.dir.y.vel -= 10; }
+        else if (a === 'dispensa') bra.dir.x.vel += 8;
       },
     };
   })();

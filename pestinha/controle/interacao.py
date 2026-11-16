@@ -117,8 +117,7 @@ class InteracaoMixin:
         self.drives.touched("throw")
         self.cerebro2.registrar(f"arremesso ({speed:.0f} px/s)")
         self.in_flight = True
-        self._evento("arremesso")
-        self._gesto_ilha("arremesso")
+        self._evento("arremesso")                  # já emite o gesto para a ilha (ação conhecida)
 
     def on_dismissed(self, thing, elapsed):
         """Você dispensou uma travessura: ela some, e o tempo até você fechar vira aprendizado (fechar rápido é pior)."""

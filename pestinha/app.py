@@ -614,6 +614,8 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
     def _evento(self, motivo):
         """Algo aconteceu com o pet: a reação que você configurou responde; senão, uma fala do motivo, com peso."""
         now = time.monotonic()
+        if self.pet_state.bracos.reagir(motivo):                # arremesso/dispensa/preso/susto também mexem os braços
+            self._gesto_ilha(motivo)                            # e o mascote repete o gesto
         if motivo in EVENTOS:
             self.convivencia.registrar(motivo, now)
         regra = self.reacoes.disparar(motivo, now)
@@ -626,6 +628,7 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         """Você deu atenção ao pet (cutucada, carinho): as falas recentes ganham ponto e a regra 'sim' dispara."""
         if tipo:
             self.convivencia.registrar(tipo, now)
+            self.pet_state.bracos.reagir(tipo)                  # os braços reagem ao gesto, não só à emoção
         self.convivencia.reagiu(now)
         for ramo in self.reacoes.reagiu(now):
             self._executar_ramo(ramo, now)
