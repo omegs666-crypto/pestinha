@@ -25,7 +25,7 @@ Quem faz o quê:
 import math
 import time
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QSystemTrayIcon
 
@@ -61,6 +61,7 @@ from .core.homeostasis import Drives
 from .core.nervous_system import LIFBrain
 from .core.protesto import STAGE_NAMES, Protesto
 from .log import log
+from .mathutil import clamp
 from .mind.castigo_ctl import CastigoController
 from .mind.convivencia import BALAO_INTERVALO_S, EVENTOS, Convivencia, Reacoes
 from .mind.festa import FestaController
@@ -82,6 +83,14 @@ from .world.mischief import MischiefEngine
 MAX_DT = 2.0          # s: um atraso maior que isso (suspensão) não vira tempo de rede
 
 SAVE_EVERY_MS = 30_000
+
+# modo um-persona-só (ele mora na ilha): fora de casa a energia gasta Nx mais rápido;
+# abaixo de SOLO_CANSADO ele volta voando; só recusa sair se estiver esgotado (< SOLO_PRONTO);
+# descansando, recarrega de 0 a 100% em ~SOLO_RECARGA_S
+SOLO_GASTO = 6.0
+SOLO_CANSADO = 0.15
+SOLO_PRONTO = 0.10
+SOLO_RECARGA_S = 75.0
 
 
 class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
@@ -198,6 +207,11 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
                     "dormindo": False, "fugas": self.castigo.vitorias["fugir"],
                     "emocao": None}
         self.ilha = criar_ilha(self)                # ilha no topo: WebEngine (Coucou) ou nativa como fallback
+
+        # ----- modo um-persona-só: ele mora na ilha e sai quando você arrasta -----
+        self._solo_livre = False    # False = descansando na ilha (só o mascote aparece)
+        self._voltando = False      # voando de volta para a ilha (cansado ou o modo ligou)
+        self._segurando_solo = False  # recém-tirado da ilha: preso no cursor até você soltar
 
         # ----- reflexos e medições -----
         self.in_flight = False      # voando depois de um arremesso
@@ -390,9 +404,12 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         self.keyboard_active = idle < 0.3 and not mouse_moving and not caressing
 
         moving = min(1.0, abs(body.vx) / 200.0 + (0.0 if body.grounded else 1.0))
-        self.drives.update(dt, self.prof, self.asleep, moving, self.emotion.arousal,
+        # descansando na ilha no modo solo, a energia recupera como se fosse sono leve
+        descansando = self._ilha_solo_ativa() and not self._solo_livre
+        self.drives.update(dt, self.prof, self.asleep or descansando, moving, self.emotion.arousal,
                            self.activity == "AWAY", engaged=self.activity in ("PROGRAMMING", "DESIGNING"),
                            preso=self.castigo.dentro, visitado=self.castigo.visita > 0.5)
+        self._solo_tick(now, dt)
         self.castigo.tick_lento(dt)
         if caressing:
             self.drives.stimulate("caress", dt)
@@ -562,6 +579,35 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
                                for g in (t.geometry() for t in self.mischief.things if not t.carried)])
         self.behavior.toy = (self.ball.body.x, self.ball.body.y) if self.ball.isVisible() else None
         self.mischief.tick(dt, bounds[3])
+        if self._segurando_solo:
+            # tirado da ilha ainda com o botão apertado: ele segue o cursor até o soltar
+            cx, cy = cursor
+            body.x, body.y = float(cx), float(cy)
+            body.vx = body.vy = 0.0
+            if not (QGuiApplication.mouseButtons() & Qt.MouseButton.LeftButton):
+                self._segurando_solo = False        # soltou: cai onde você deixou
+                body.held = False
+        if self._voltando:
+            # voo de volta para a ilha: kinemático, a física do corpo fica suspensa (held)
+            tx = self.ilha.x() + self.ilha.width() // 2
+            ty = self.ilha.y() + 60
+            dx, dy = tx - body.x, ty - body.y
+            dist = math.hypot(dx, dy)
+            if dist < 24:
+                body.held = False
+                self._voltando = False
+                self._solo_livre = False            # chegou: ele descansa na ilha
+                ponte = getattr(self.ilha, "ponte", None)
+                if ponte is not None:
+                    ponte.gesto.emit("voltou")      # o mascote reaparece com um pulinho
+                    ponte.solo_livre.emit(False)
+                    ponte._emitir_estado()
+                self.update_visibility()
+            else:
+                passo = min(dist, max(90.0, dist * 5.0) * dt)   # rápido longe, macio na chegada
+                body.x += dx / dist * passo
+                body.y += dy / dist * passo
+                body.vx = body.vy = 0.0
         st = self.pet_state
         st.bracos.passo(self.voz._falando, st.boca.abertura.valor, st.emotion)   # braços a 60 fps; a boca segue no think
         self.pet.animate(now)
@@ -615,6 +661,77 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         if voz:
             self.voz.dizer(texto, now)
         return True
+
+    # ----- modo um-persona-só: ele mora na ilha; arrastado para fora, fica livre até cansar -----
+    def _emitir_solo(self):
+        """Avisa a ilha se o persona está fora (o mascote some) ou dentro (ele volta)."""
+        ponte = getattr(getattr(self, "ilha", None), "ponte", None)
+        if ponte is not None:
+            ponte.solo_livre.emit(bool(self._solo_livre))
+
+    def liberar_da_ilha(self):
+        """Você puxou o mascote para fora da ilha: ele cai na tela a partir da ilha."""
+        if not self._ilha_solo_ativa() or self._solo_livre:
+            log(f"[solo] liberar recusado: ativo={self._ilha_solo_ativa()} livre={self._solo_livre}")
+            return
+        if self.drives.energy < SOLO_PRONTO:
+            self.ilha.anunciar("tô esgotado… me deixa dormir um pouquinho", "calmo", "pet")
+            ponte = getattr(self.ilha, "ponte", None)
+            if ponte is not None:
+                ponte.gesto.emit("cansado")         # o mascote dá um pulinho fraco, cansado
+            log(f"[solo] liberar recusado: energia {self.drives.energy:.2f} < {SOLO_PRONTO}")
+            return
+        log(f"[solo] liberado da ilha (energia {self.drives.energy:.2f})")
+        if self.asleep:
+            self.sleep.wake()                       # tiraram ele da cama: acorda para sair
+        self._solo_livre = True
+        self._segurando_solo = True                 # ele sai preso no cursor até você soltar
+        body = self.pet.body
+        body.x = float(self.ilha.x() + self.ilha.width() // 2)
+        body.y = float(self.ilha.y() + 70)
+        body.vx = body.vy = 0.0
+        body.held = True
+        body.grounded = False
+        self.update_visibility()
+        self._emitir_solo()
+
+    def _voltar_pra_ilha(self):
+        """Cansado (ou o modo ligou com ele na tela): ele avisa e voa de volta para a ilha."""
+        if self._voltando or not self._ilha_solo_ativa():
+            return
+        self.falar_pet("tô cansado… vou descansar na ilha", tom="calmo", voz=True, forcar=True)
+        self.pet.cancel_interaction()
+        self._voltando = True
+        body = self.pet.body
+        body.held = True                    # voo roteado: a física fica suspensa até a chegada
+        body.vx = body.vy = 0.0
+
+    def _solo_tick(self, now, dt):
+        """Modo um-persona-só: fora ele gasta rápido e volta cansado; dentro, recarrega depressa."""
+        if not self._ilha_solo_ativa():
+            return
+        if self._solo_livre:
+            if self._voltando:
+                return
+            self.drives.energy = clamp(self.drives.energy - dt * SOLO_GASTO / self.prof["energy_span"])
+            if self.drives.energy < SOLO_CANSADO:
+                self._voltar_pra_ilha()
+        else:
+            # descansando na ilha: recarga rápida (sono leve), de vazio a cheio em ~SOLO_RECARGA_S
+            self.drives.energy = clamp(self.drives.energy + dt / SOLO_RECARGA_S)
+
+    def _solo_perms(self):
+        """Transições ao ligar/desligar a opção 'um persona só'."""
+        if self._ilha_solo_ativa():
+            if self.pet.isVisible() and not self._solo_livre:
+                self._solo_livre = True       # estava na tela quando o modo ligou
+            if self._solo_livre and not self._voltando:
+                self._voltar_pra_ilha()       # ele volta voando para casa
+        else:
+            self._solo_livre = False
+            self._voltando = False
+            self.pet.body.held = False
+        self._emitir_solo()
 
     def _evento(self, motivo):
         """Algo aconteceu com o pet: a reação que você configurou responde; senão, uma fala do motivo, com peso."""

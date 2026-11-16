@@ -15,6 +15,7 @@ from .. import log as log_module
 from ..body.desenho_rosto import CAMPOS_DE_COR, PADRAO
 from ..config import EMOTION_NAMES
 from ..core.emotion import EYE_SHAPES
+from ..core.homeostasis import WAKE_ABOVE
 from ..mind.chat_voice import ChatVoice
 from ..mind.convivencia import ler_persona, prompt_fala
 from ..mind.narrador import Narrador, escolher_modelo, limpar_frase, prompt_insight
@@ -66,6 +67,7 @@ class Ponte(QObject):
     modo_mudou = Signal(str)        # "topo" (encostada) ou "livre"
     gesto = Signal(str)             # interação no pet Qt ("cutucada"|"carinho"|"arremesso") p/ o mascote reagir
     emocao = Signal(str)            # a emoção mudou AGORA (o snapshot de 500 ms chegaria atrasado)
+    solo_livre = Signal(bool)       # modo um-persona-só: True = ele saiu da ilha (o mascote some)
 
     def __init__(self, app, parent=None):
         super().__init__(parent)
@@ -223,6 +225,19 @@ class Ponte(QObject):
         if fn:
             fn()
 
+    @Slot(str)
+    def jslog(self, texto):
+        """Depuração: mensagens do JS da ilha vão para o log (descobrir por que um gesto não pega)."""
+        log_module.log(f"[ilha-js] {str(texto)[:200]}")
+
+    @Slot()
+    def mascote_liberar(self):
+        """Você puxou o mascote para fora da ilha (modo um-persona-só): ele aparece na tela."""
+        fn = getattr(self.app, "liberar_da_ilha", None)
+        log_module.log(f"[solo] mascote_liberar recebido; app tem liberar_da_ilha={fn is not None}")
+        if fn:
+            fn()
+
     @Slot(int, int, int, int)
     def definir_regiao(self, x, y, largura, altura):
         def lim(v):
@@ -284,15 +299,21 @@ class Ponte(QObject):
         taxas = getattr(getattr(estado, "tone", None), "r", {})
         valores = taxas.values() if isinstance(taxas, dict) else (taxas if isinstance(taxas, (list, tuple)) else [])
         atividade = max((_percentual(v) for v in valores if isinstance(v, (int, float))), default=0)
+        # modo um-persona-só: descansando na ilha, o mascote mostra o soninho até recarregar
+        emocao_chave = str(emocao or "observando")[:40]
+        descansando = (self.app.perms.get("ilha_solo") and not getattr(self.app, "_solo_livre", True)
+                       and getattr(drives, "energy", 1.0) < WAKE_ABOVE)
         return {
             "pet": str(getattr(self.app, "nome", "Pestinha"))[:60],
             "emocao": str(EMOTION_NAMES.get(emocao, emocao))[:40],
-            "emocao_chave": str(emocao or "observando")[:40],
+            "emocao_chave": "dormindo" if descansando else emocao_chave,
             "energia": _percentual(getattr(drives, "energy", 0.0)),
             "estimulacao": _percentual(getattr(drives, "stimulation", 0.0)),
             "insatisfacao": _percentual(getattr(getattr(self.app, "protest", None), "grievance", 0.0)),
             "atividade": atividade,
             "carinho": bool(getattr(estado, "feliz_fechado", lambda *a: False)()) if estado else False,
+            "solo": bool(self.app.perms.get("ilha_solo")),
+            "solo_livre": bool(getattr(self.app, "_solo_livre", False)),
             "pausado": bool(getattr(self.app, "paused", False)),
             "voz": bool(self.app.perms.get("voz")),
             "travessuras": bool(self.app.perms.get("travessuras")),
@@ -335,6 +356,8 @@ class Ponte(QObject):
             self.app.apply_perms({"voz": not self.app.perms.get("voz")})
         elif nome == "travessuras":
             self.app.apply_perms({"travessuras": not self.app.perms.get("travessuras")})
+        elif nome == "solo":
+            self.app.apply_perms({"ilha_solo": not self.app.perms.get("ilha_solo")})
         elif nome == "avion":
             self.offline = bool(valor)
             if self.offline:

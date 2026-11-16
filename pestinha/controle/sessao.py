@@ -29,6 +29,7 @@ class SessaoMixin:
             self.timeline.close()      # grava o minuto em andamento e para
         self.prof = config.profile(self.perms)
         self.conditioning.rate = self.prof["cond_rate"]
+        self._solo_perms()                              # ligar/desligar 'um persona só' move ele de lugar
         self._apply_settings()
 
     def _apply_settings(self):
@@ -49,13 +50,20 @@ class SessaoMixin:
         return (self.perms["ativo"] and not self.hidden
                 and (not self.fullscreen or self.perms["tela_cheia"]))
 
+    def _ilha_solo_ativa(self):
+        """Modo um-persona-só: ligado, ilha ligada e ilha é a WebEngine (que tem o mascote)."""
+        return bool(self.perms.get("ilha_solo") and self.perms.get("ilha")
+                    and getattr(getattr(self, "ilha", None), "ponte", None) is not None)
+
     def update_visibility(self):
         """Decide se o pet aparece (ligado, não escondido, sem tela cheia, sem pânico) e mostra ou esconde tudo junto."""
-        visible = (
+        base = (
             self.perms["ativo"]
             and not self.hidden
             and (not self.fullscreen or self.perms["tela_cheia"])
         )
+        # modo um-persona-só: descansando na ilha = o pet some (só o mascote fica)
+        visible = base and not (self._ilha_solo_ativa() and not self._solo_livre)
         if visible != self.pet.isVisible():
             self.pet.setVisible(visible)
             if not visible:
@@ -78,7 +86,7 @@ class SessaoMixin:
         if not bola_visivel:
             self.ball.cancel_drag()                  # guardada ou escondida na mão: larga
         self.ball.setVisible(bola_visivel)
-        self.ilha.setVisible(visible and self.perms.get("ilha"))   # ilha some junto com o pet
+        self.ilha.setVisible(base and self.perms.get("ilha"))      # no modo solo a ilha fica mesmo com o pet dentro dela
         if not visible or not self.perms["fogos"]:
             self.festa.fogos.recolher()
         self.tray.set_state(self.paused, self.hidden, self.perms["modo_teste"])

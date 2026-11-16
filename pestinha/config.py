@@ -59,6 +59,7 @@ DEFAULT_PERMISSIONS = {
     "ollama_chat_modelo": "",  # modelo local selecionado na aba Chat da ilha
     "ilha": False,             # ilha interativa no topo da tela (estilo Coucou): espreita e expande em pills
     "ilha_web": True,          # usa a ilha em WebEngine (ui/web); False ou sem WebEngine = ilha nativa Qt
+    "ilha_solo": False,        # um persona só: ele mora na ilha; arraste para fora e ele sai, cansado ele volta
 }
 
 # (chave, rótulo, descrição) na ordem da tela inicial
@@ -104,6 +105,9 @@ PERMISSION_GROUPS = [
         ("ilha", "Ilha no topo da tela",
          "Uma ilha no estilo Coucou no topo-centro: o rostinho dele espreita quando o mouse "
          "passa e abre uma visão geral com atalhos (monitor, painéis, castigo, voz)."),
+        ("ilha_solo", "Um persona só (ele mora na ilha)",
+         "Só existe um dele: por padrão ele fica na ilha. Arraste o rostinho para fora e ele "
+         "sai para a tela; quando cansar, ele avisa e volta voando para descansar na ilha."),
     ]),
     ("Teste", [
         ("modo_teste", "Modo teste", "Tempos curtos: travessuras e emoções acontecem em segundos."),

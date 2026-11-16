@@ -78,7 +78,7 @@ def draw_face(p, shape, gaze=(0.0, 0.0), blink=1.0, emotion="observando", carinh
     """Desenha moldura + tela + olhos + boca (+ acessórios e braços) com centro na origem do painter."""
     a = aparencia
     if a.bracos and bracos is not None:
-        _bracos(p, a.bracos, bracos)
+        _bracos_membros(p, a.bracos, bracos)
     p.setPen(QPen(a.moldura, 5))
     p.setBrush(a.casca)
     p.drawRoundedRect(QRectF(-BODY_W / 2, -BODY_H / 2, BODY_W, BODY_H), 20, 20)
@@ -105,24 +105,26 @@ def draw_face(p, shape, gaze=(0.0, 0.0), blink=1.0, emotion="observando", carinh
     for nome, cor in a.acessorios:
         if nome == "oculos":
             _oculos(p, cor)
+    if a.bracos and bracos is not None:
+        _bracos_maos(p, a.bracos, bracos)                 # as mãos vêm por cima do rosto (carinho, aceno)
 
 
-def _bracos(p, cor, bracos):
-    """Os braços mecânicos: ombro na lateral -> cotovelo curvo -> mão flutuante.
-
-    RENDERIZAÇÃO - como as molas viram desenho:
-    - as molas X/Y movem a MÃO; o ombro é fixo e fica escondido sob o corpo
-      (os braços são desenhados ANTES da casca, então a dobra sai da lateral);
-    - o membro é um quadratic ombro->cotovelo->mão em duas passadas
-      (contorno neon largo + metal fino = cápsula arredondada);
-    - na mão vale a ordem translate -> rotate (pêndulo) -> scale (squash
-      no Y, preservando volume).
-    """
-    metal = QColor("#1e222b")
+def _posicoes_bracos(bracos):
+    """Âncoras dos dois braços: mão (molas), ombro (fixo) e cotovelo (dobra para fora e sobe)."""
     for lado, braco in ((-1, bracos.esq), (1, bracos.dir)):
         mx, my = lado * 64 + braco.x.valor, 55 + braco.y.valor      # a mão: quem as molas movem
         ox, oy = lado * 52, 34                                       # ombro preso na lateral do corpo
         ex, ey = (ox + mx) / 2 + lado * 6, (oy + my) / 2 - 7        # cotovelo: dobra para fora e sobe
+        yield lado, braco, mx, my, ox, oy, ex, ey
+
+
+def _bracos_membros(p, cor, bracos):
+    """O membro, desenhado ANTES da casca: o ombro fica escondido sob o corpo e a dobra sai da lateral.
+
+    RENDERIZAÇÃO - quadratic ombro->cotovelo->mão em duas passadas
+    (contorno neon largo + metal fino = cápsula arredondada)."""
+    metal = QColor("#1e222b")
+    for lado, braco, mx, my, ox, oy, ex, ey in _posicoes_bracos(bracos):
         membro = QPainterPath(QPointF(ox, oy))
         membro.quadTo(QPointF(ex, ey), QPointF(mx, my))
         p.setBrush(Qt.NoBrush)
@@ -130,6 +132,15 @@ def _bracos(p, cor, bracos):
         p.drawPath(membro)
         p.setPen(QPen(metal, 7, Qt.SolidLine, Qt.RoundCap))         # metal por dentro (fino)
         p.drawPath(membro)
+
+
+def _bracos_maos(p, cor, bracos):
+    """A mão, desenhada DEPOIS do rosto: ela passa por cima do corpo nos gestos que sobem.
+
+    RENDERIZAÇÃO - na mão vale a ordem translate -> rotate (pêndulo) -> scale
+    (squash no Y, preservando volume)."""
+    metal = QColor("#1e222b")
+    for lado, braco, mx, my, _ox, _oy, _ex, _ey in _posicoes_bracos(bracos):
         p.save()                                                   # a mão: pêndulo + squash & stretch
         p.translate(mx, my)
         p.rotate(braco.rot.valor)

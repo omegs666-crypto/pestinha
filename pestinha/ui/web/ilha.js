@@ -362,6 +362,8 @@
     let piscada = 0, proxPiscada = 2, gx = 0, gy = 0, pontX = -1e4, pontY = -1e4;
     let felizFechado = false, carinhoAte = 0;   // carinho: olhinhos ^^ + corações (estado ou gesto)
     let esfrega = [], ultimoCarinho = 0;        // esfregar o mouse no mascote = carinho (como no pet)
+    let fora = false;                           // modo um-persona-só: ele está fora, o mascote se esconde
+    let puxar = null;                           // arrastar o mascote para baixo = tirar ele da ilha
     // gestos transitórios por reação (espelha REACAO_DUR de bracos.py) - prioridade sobre o repouso
     const REACAO_DUR = { cutucada: .7, carinho: 1.4, arremesso: 1.3, dispensa: .8, preso: 1, fuga: 1, assustado: .7 };
     let braReacao = null;                       // {acao, t0} em segundos
@@ -374,6 +376,7 @@
     }
 
     function desenhar(dt) {
+      if (fora) { ctx.clearRect(0, 0, c.width, c.height); return; }   // ele saiu: o mascote não desenha
       t += dt;
       const destino = olhos[emocao] || olhos.observando || FORMA0, k = Math.min(1, dt * 9);
       for (const p of ['w', 'h', 'inner', 'outer', 'smile', 'dy']) forma[p] += (destino[p] - forma[p]) * k;
@@ -464,7 +467,7 @@
             bra.dir.y.t = Math.sin(tm * C.idleFreq + C.idleFase) * resp;
           }
         }
-        // renderização: ombro fixo sob a casca -> cotovelo curvo -> mão com pêndulo e squash
+        // renderização: ombro fixo sob a casca -> cotovelo curvo; a MÃO desenha depois do rosto
         ctx.lineCap = 'round';
         for (const b of [bra.esq, bra.dir]) {
           const mx = b.lado * 64 + b.x.v * C.exag, my = 55 + b.y.v * C.exag;   // a mão: exagero p/ ler na escala .28
@@ -473,13 +476,6 @@
           ctx.beginPath(); ctx.moveTo(ox, oy); ctx.quadraticCurveTo(ex, ey, mx, my); ctx.stroke();
           ctx.strokeStyle = '#1e222b'; ctx.lineWidth = 7;                     // metal por dentro
           ctx.beginPath(); ctx.moveTo(ox, oy); ctx.quadraticCurveTo(ex, ey, mx, my); ctx.stroke();
-          ctx.save();                                                         // a mão: pêndulo + squash & stretch
-          ctx.translate(mx, my);
-          ctx.rotate(b.rot.v * Math.PI / 180);
-          ctx.scale(1 / b.sq.v, b.sq.v);
-          ctx.fillStyle = '#1e222b'; ctx.strokeStyle = bracos; ctx.lineWidth = 5;
-          rr(b.lado * 4 - 16, -11, 32, 22, 11); ctx.fill(); ctx.stroke();
-          ctx.restore();
         }
       }
       ctx.fillStyle = cores.casca; ctx.strokeStyle = cores.moldura; ctx.lineWidth = 5;
@@ -542,6 +538,19 @@
         ctx.beginPath(); ctx.moveTo(-3, 26); ctx.lineTo(3, 26); ctx.lineTo(5.5, 38); ctx.lineTo(0, 42); ctx.lineTo(-5.5, 38);
         ctx.closePath(); ctx.fill();
       }
+
+      if (bracos) {                                        // as mãos vêm por cima do rosto (carinho, aceno)
+        for (const b of [bra.esq, bra.dir]) {
+          const mx = b.lado * 64 + b.x.v * BRACO_CFG.exag, my = 55 + b.y.v * BRACO_CFG.exag;
+          ctx.save();
+          ctx.translate(mx, my);
+          ctx.rotate(b.rot.v * Math.PI / 180);
+          ctx.scale(1 / b.sq.v, b.sq.v);
+          ctx.fillStyle = '#1e222b'; ctx.strokeStyle = bracos; ctx.lineWidth = 5;
+          rr(b.lado * 4 - 16, -11, 32, 22, 11); ctx.fill(); ctx.stroke();
+          ctx.restore();
+        }
+      }
     }
 
     let ultimo = 0;
@@ -576,6 +585,26 @@
       }
     });
 
+    // modo um-persona-só: puxar o mascote para baixo tira ele da ilha (ele sai preso no cursor)
+    c.addEventListener('pointerdown', e => {
+      if (estado.solo && !estado.solo_livre) {
+        puxar = e.clientY;
+        c.setPointerCapture(e.pointerId);
+        e.stopPropagation();                        // sem isso, puxar o mascote também arrasta a ilha
+        if (ponte) ponte.jslog('puxar armado y=' + Math.round(e.clientY));
+      }
+    });
+    c.addEventListener('pointermove', e => {
+      // limiar BEM curto: a janela da ilha é recortada na pílula, fora dela os eventos não chegam
+      if (puxar != null && e.clientY - puxar > 10) {
+        puxar = null;
+        if (ponte) { ponte.jslog('puxar disparou, liberando'); ponte.mascote_liberar(); }
+      }
+    });
+    const soltaPuxar = () => { puxar = null; };
+    c.addEventListener('pointerup', soltaPuxar);
+    c.addEventListener('pointercancel', soltaPuxar);
+
     return {
       configurar(d) {
         olhos = d.olhos || olhos;
@@ -585,6 +614,11 @@
       },
       definirEmocao(nome) { emocao = nome || 'observando'; },
       definirCarinho(v) { felizFechado = !!v; },
+      definirFora(v) {                           // modo um-persona-só: ele está fora, o mascote some
+        fora = !!v;
+        c.style.opacity = fora ? '0' : '1';
+        c.style.pointerEvents = fora ? 'none' : '';
+      },
       aoGesto(a) {                                        // gesto no pet Qt: o mascote reage junto
         if (a in REACAO_DUR) braReacao = { acao: a, t0: performance.now() / 1000 };
         if (a === 'cutucada') { pulo.vel -= 55; bra.esq.y.vel -= 8; bra.dir.y.vel -= 8; bra.esq.x.vel -= 4; bra.dir.x.vel += 4; }
@@ -592,6 +626,8 @@
         else if (a === 'carinho') carinhoAte = performance.now() + 1500;
         else if (a === 'assustado') { bra.esq.y.vel -= 10; bra.dir.y.vel -= 10; }
         else if (a === 'dispensa') bra.dir.x.vel += 8;
+        else if (a === 'voltou') { pulo.vel -= 70; bra.esq.y.vel -= 8; bra.dir.y.vel -= 8; }   // chegou cansado na ilha
+        else if (a === 'cansado') { pulo.vel -= 15; }   // pulinho fraco: "ainda não dá, tô descansando"
       },
     };
   })();
@@ -855,7 +891,7 @@
       $('#' + barra).style.transform = `scaleX(${lim(pct / 100, 0, 1).toFixed(3)})`;
     });
     const marcado = { pausa: !!estado.pausado, voz: !!estado.voz, travessuras: !!estado.travessuras,
-      avion: !!estado.offline, narrador: narradorLigado };
+      avion: !!estado.offline, narrador: narradorLigado, solo: !!estado.solo };
     $$('.chave[data-acao]').forEach(b => b.setAttribute('aria-pressed', String(!!marcado[b.dataset.acao])));
   }
   // efeito lupa: os ícones crescem conforme o cursor se aproxima (a tira é vertical)
@@ -923,6 +959,7 @@
     $('#pet-emocao').textContent = (estado.emocao || '—').toLowerCase();
     mascote.definirEmocao(estado.emocao_chave);
     mascote.definirCarinho(estado.carinho);
+    mascote.definirFora(estado.solo && estado.solo_livre);   // um-persona-só: fora da ilha, o mascote some
     $('#st-energia').textContent = (estado.energia ?? 0) + '%';
     $('#st-estimulo').textContent = (estado.estimulacao ?? 0) + '%';
     $('#st-insatisfacao').textContent = (estado.insatisfacao ?? 0) + '%';
@@ -1504,6 +1541,7 @@
       ponte.voz_modelo.connect(aoModeloVoz);
       ponte.gesto.connect(a => mascote.aoGesto(a));
       ponte.emocao.connect(a => mascote.definirEmocao(a));   // emoção instantânea, sem o atraso do snapshot
+      ponte.solo_livre.connect(v => mascote.definirFora(estado.solo && v));  // saiu/voltou na hora
       ponte.voz_download.connect(p => { $('#voz-progresso').textContent = p + '%'; });
       ponte.obter_estado(s => aplicarEstado(JSON.parse(s)));
       ponte.listar_modelos();

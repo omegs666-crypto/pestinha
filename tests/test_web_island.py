@@ -304,6 +304,39 @@ def test_gesto_do_mascote_entra_pelos_mesmos_caminhos_do_pet(tmp_path):
     ponte.shutdown()
 
 
+def test_mascote_liberar_chama_a_saida_do_pet(tmp_path):
+    """Arrastar o mascote para fora da ilha chama liberar_da_ilha no app."""
+    _qt()
+    app = FakeApp(tmp_path)
+    app.liberar_da_ilha = lambda: app.chamadas.append("saiu")
+    ponte = Ponte(app)
+    ponte.mascote_liberar()
+    assert app.chamadas == ["saiu"]
+    ponte.shutdown()
+
+
+def test_snapshot_traz_o_modo_um_persona_so(tmp_path):
+    """O mascote precisa saber se o modo solo está ligado e se o pet está fora."""
+    _qt()
+    app = FakeApp(tmp_path)
+    app.perms["ilha_solo"] = True
+    app._solo_livre = False
+    estado = Ponte(app).snapshot()
+    assert estado["solo"] is True and estado["solo_livre"] is False
+    app._solo_livre = True
+    assert Ponte(app).snapshot()["solo_livre"] is True
+
+
+def test_acao_solo_alterna_a_permissao(tmp_path):
+    _qt()
+    app = FakeApp(tmp_path)
+    app.perms["ilha_solo"] = False
+    ponte = Ponte(app)
+    ponte.acao("solo", True)
+    assert app.perms["ilha_solo"] is True
+    ponte.shutdown()
+
+
 def _js(ilha, codigo):
     """Roda JS na página da ilha e devolve o resultado (espera o carregamento antes)."""
     laco = QEventLoop()

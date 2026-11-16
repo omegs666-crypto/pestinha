@@ -67,7 +67,7 @@ class InteracaoMixin:
         self._reagiu(now, "carinho")
         self._gesto_ilha("carinho")
         if self.asleep:
-            self.sleep.wake(started=True)
+            self.sleep.wake(startled=True)
 
     def poke_reflex(self, delta_hz):
         """
