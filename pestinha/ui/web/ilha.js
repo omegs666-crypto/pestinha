@@ -332,9 +332,17 @@
       rigRot: .07, amoRot: .55,      // rotação: pêndulo mole, oscila antes de parar
       rigSq: .16, amoSq: .55,        // squash: deforma rápido, elasticidade quica
       ganhoRot: .9, ganhoSq: .06, sqMax: .35,
-      idleAmp: 2, idleFreq: .003, idleFase: 1.3,
-      falaAmp: 10, ganhoBoca: .3,
-      impulsoP: .05, impulsoX: 3, impulsoY: 4, impulsoAlcance: 12,
+      idleAmp: 2, idleFreq: 3, idleFase: 1.3,
+      falaAmp: 14, falaFreqE: 16, falaFreqD: 14, ganhoBoca: .3,
+      impulsoP: .08, impulsoX: 3, impulsoY: 4, impulsoAlcance: 12,
+      // gestos por emoção (espelha EMOCAO_* de bracos.py) - energia amplifica a fala
+      energia: { feliz: 1.3, bravo: 1.5, assustado: 1.2, dramatico: 1.4, curioso: 1, observando: .8, contente: .9, triste: .4, dormindo: .1 },
+      felizFreq: 1.6, felizJab: 9, felizJanela: .30, felizAbre: 3,
+      bravoFreq: 32, bravoAmp: 2.6, bravoFecha: 6, bravoSobe: 5,
+      tristeCaem: 9, tristeFreq: 1.2, dormindoCaem: 11,
+      sustoSobe: 10, sustoAbre: 8, sustoTremor: 22,
+      curioSobe: 9, curioTroca: .35,
+      dramaAmp: 14, dramaFreq: 4,
     };
     const molaB = (rig, amo) => ({ v: 0, t: 0, vel: 0, rig, amo });
     const passoBra = m => { m.vel += (m.t - m.v) * m.rig; m.vel *= m.amo; m.v += m.vel; };
@@ -376,21 +384,53 @@
       ctx.translate(W / 2, H / 2); ctx.scale(K, K);
       ctx.lineJoin = 'round';
       if (bracos) {
-        // estados: gesticula na fala (ondas assíncronas + impulsos de velocidade); em repouso, respira
+        // estados: gesticula na fala (ondas + impulsos de velocidade); em repouso, gesto da emoção
         bra.esq.fisica(); bra.dir.fisica();
-        const tm = performance.now(), C = BRACO_CFG;
+        const tm = performance.now() / 1000, C = BRACO_CFG;
         if (respondendo) {
-          bra.esq.y.t = Math.sin(tm * .016) * C.falaAmp - boca * C.ganhoBoca;
-          bra.dir.y.t = Math.cos(tm * .014) * C.falaAmp - boca * C.ganhoBoca;
-          if (Math.random() < C.impulsoP) {                    // pico de gesto: impulso na velocidade (inércia)
-            bra.esq.x.vel -= Math.random() * C.impulsoX; bra.dir.x.vel += Math.random() * C.impulsoX;
-            bra.esq.y.vel -= Math.random() * C.impulsoY; bra.dir.y.vel -= Math.random() * C.impulsoY;
+          const en = C.energia[emocao] ?? .8, amp = C.falaAmp * en;
+          bra.esq.y.t = Math.sin(tm * C.falaFreqE) * amp - boca * C.ganhoBoca;
+          bra.dir.y.t = Math.cos(tm * C.falaFreqD) * amp - boca * C.ganhoBoca;
+          if (Math.random() < C.impulsoP * en) {               // pico de gesto: impulso na velocidade (inércia)
+            bra.esq.x.vel -= Math.random() * C.impulsoX * en; bra.dir.x.vel += Math.random() * C.impulsoX * en;
+            bra.esq.y.vel -= Math.random() * C.impulsoY * en; bra.dir.y.vel -= Math.random() * C.impulsoY * en;
             bra.esq.x.t = -Math.random() * C.impulsoAlcance; bra.dir.x.t = Math.random() * C.impulsoAlcance;
           }
         } else {
-          bra.esq.y.t = Math.sin(tm * C.idleFreq) * C.idleAmp;
-          bra.dir.y.t = Math.sin(tm * C.idleFreq + C.idleFase) * C.idleAmp;      // fases diferentes: nunca em espelho
+          // repouso: cada emoção tem seu gesto (espelha _repouso de bracos.py)
+          const resp = emocao === 'contente' ? 3 : C.idleAmp;
           bra.esq.x.t = bra.dir.x.t = 0;
+          if (emocao === 'feliz') {                            // "cut cut": cutucada alternada para o ar
+            const fase = (tm * C.felizFreq) % 2;
+            bra.esq.y.t = fase < C.felizJanela ? -C.felizJab : Math.sin(tm * C.idleFreq) * resp;
+            bra.dir.y.t = (fase >= 1 && fase < 1 + C.felizJanela) ? -C.felizJab : Math.sin(tm * C.idleFreq + C.idleFase) * resp;
+            bra.esq.x.t = fase < C.felizJanela ? -C.felizAbre : 0;
+            bra.dir.x.t = (fase >= 1 && fase < 1 + C.felizJanela) ? C.felizAbre : 0;
+          } else if (emocao === 'bravo') {                     // punhos fechados tremendo
+            bra.esq.y.t = Math.sin(tm * C.bravoFreq) * C.bravoAmp - C.bravoSobe;
+            bra.dir.y.t = Math.sin(tm * C.bravoFreq + .9) * C.bravoAmp - C.bravoSobe;
+            bra.esq.x.t = C.bravoFecha + Math.sin(tm * C.bravoFreq * .7) * 1.2;
+            bra.dir.x.t = -C.bravoFecha - Math.sin(tm * C.bravoFreq * .7) * 1.2;
+          } else if (emocao === 'triste') {                    // caídos, respiração lenta
+            bra.esq.y.t = C.tristeCaem + Math.sin(tm * C.tristeFreq) * resp;
+            bra.dir.y.t = C.tristeCaem + Math.sin(tm * C.tristeFreq + C.idleFase) * resp;
+          } else if (emocao === 'dormindo') {                  // largados no corpo
+            bra.esq.y.t = bra.dir.y.t = C.dormindoCaem;
+          } else if (emocao === 'assustado') {                 // para cima e abertos, tremendo
+            bra.esq.y.t = -C.sustoSobe + Math.sin(tm * C.sustoTremor) * 1.1;
+            bra.dir.y.t = -C.sustoSobe + Math.sin(tm * C.sustoTremor + .7) * 1.1;
+            bra.esq.x.t = -C.sustoAbre; bra.dir.x.t = C.sustoAbre;
+          } else if (emocao === 'curioso') {                   // um braço aponta e troca de lado
+            const sobe = Math.sin(tm * C.curioTroca * 2 * Math.PI) > 0 ? -1 : 1;
+            bra.esq.y.t = sobe < 0 ? -C.curioSobe : Math.sin(tm * C.idleFreq) * resp;
+            bra.dir.y.t = sobe > 0 ? -C.curioSobe : Math.sin(tm * C.idleFreq + C.idleFase) * resp;
+          } else if (emocao === 'dramatico') {                 // varreduras de teatro em oposição
+            bra.esq.y.t = Math.sin(tm * C.dramaFreq) * C.dramaAmp;
+            bra.dir.y.t = -Math.sin(tm * C.dramaFreq) * C.dramaAmp;
+          } else {                                             // observando/contente: respiração
+            bra.esq.y.t = Math.sin(tm * C.idleFreq) * resp;
+            bra.dir.y.t = Math.sin(tm * C.idleFreq + C.idleFase) * resp;
+          }
         }
         // renderização: translate (posição) -> rotate (pêndulo) -> scale (squash & stretch no Y)
         ctx.fillStyle = '#1e222b'; ctx.strokeStyle = bracos; ctx.lineWidth = 5;
