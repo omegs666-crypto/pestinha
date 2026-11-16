@@ -20,7 +20,7 @@
 
   const TAM = {
     compacta: { w: 380, h: 46, r: 23 },
-    home: { w: 1000, h: 400, r: 30 },
+    home: { w: 1000, h: 480, r: 30 },
     grande: { w: 1000, h: 594, r: 30 },
   };
   const VISTAS_GRANDES = new Set(['som', 'painel', 'grade', 'fluxos', 'chat']);
@@ -198,11 +198,13 @@
   // Arrastar: segurar a barra e mover leva a pílula para qualquer lugar da tela (a janela acompanha).
   // Passou de 4 px vira arraste; o clique que vem logo depois é ignorado.
   let arraste = null, arrastou = false;
-  $('#barra').addEventListener('pointerdown', e => {
+  const comecarArraste = e => {
     if (e.button !== 0) return;
     arraste = { x: e.screenX, y: e.screenY, sx: e.screenX, sy: e.screenY };
     arrastou = false;
-  });
+  };
+  $('#barra').addEventListener('pointerdown', comecarArraste);
+  $('#alca-dock').addEventListener('pointerdown', comecarArraste);   // a alça da tira também arrasta
   document.addEventListener('pointermove', e => {
     if (!arraste) return;
     const dx = e.screenX - arraste.x, dy = e.screenY - arraste.y;
@@ -636,6 +638,11 @@
   }
 
   const dock = $('#dock');
+  // avatar do topo da tira: o rosto do mascote copiado a cada quadro (mesma vida, mesmo tamanho)
+  const avatar = (() => {
+    const cv = $('#avatar-cv'), cx = cv.getContext('2d');
+    return { copiar() { ajustarCanvas(cv, 28, 24); cx.drawImage($('#mascote'), 0, 0, cv.width, cv.height); } };
+  })();
   $$('.dock [data-vista]').forEach(b => b.addEventListener('click', () => mostrarVista(b.dataset.vista)));
   $$('[data-painel]').forEach(b => b.addEventListener('click', () => { if (ponte) ponte.painel(b.dataset.painel); }));
 
@@ -666,11 +673,11 @@
       avion: !!estado.offline, narrador: narradorLigado };
     $$('.chave[data-acao]').forEach(b => b.setAttribute('aria-pressed', String(!!marcado[b.dataset.acao])));
   }
-  // efeito lupa: os ícones crescem conforme o cursor se aproxima
+  // efeito lupa: os ícones crescem conforme o cursor se aproxima (a tira é vertical)
   dock.addEventListener('mousemove', e => {
     $$('button', dock).forEach(b => {
       const r = b.getBoundingClientRect();
-      const d = Math.abs(e.clientX - (r.left + r.width / 2));
+      const d = Math.abs(e.clientY - (r.top + r.height / 2));
       b.style.transform = `scale(${(1 + Math.max(0, 1 - d / 90) * .38).toFixed(3)})`;
     });
   });
@@ -1280,6 +1287,7 @@
       orbe.desenhar(humor, lim((t - (ultimoOrbe || t)) / 1000, 0, .1));
       ultimoOrbe = t;
     }
+    if (aberta) avatar.copiar();
     if (aberta && vista === 'home') { grafico.desenhar(); desenharSomMini(); }
     if (aberta && vista === 'som') estudio.desenhar(dt);
     if (aberta && vista === 'chat') vibra.desenhar(dt);
