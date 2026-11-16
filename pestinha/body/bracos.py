@@ -49,9 +49,10 @@ SQ_MAX = 0.35            # deformação máxima (35% - além disso parece borrac
 # ============================================================================
 # 2. ALVOS POR ESTADO - repouso (respiração) e fala (gesticulação)
 # ============================================================================
-IDLE_AMP_Y = 2.0         # amplitude da respiração em repouso (px, na escala do corpo)
+IDLE_AMP_Y = 4.0         # amplitude da respiração em repouso (px - visível, não microscópica)
 IDLE_FREQ = 3.0          # frequência da respiração (rad/s)
 IDLE_FASE = 1.3          # defasagem do braço direito: nunca em espelho
+IDLE_SWAY = 1.8          # deriva lateral lenta no repouso - o braço nunca congela
 FALA_AMP_Y = 14.0        # amplitude das ondas de gesto na fala
 FALA_FREQ_E = 16.0       # frequência da onda do braço esquerdo
 FALA_FREQ_D = 14.0       # frequência da onda do braço direito (diferente de propósito)
@@ -152,7 +153,9 @@ class Bracos:
     def _repouso(self, emocao, t):
         """O gesto de repouso muda com a emoção; o padrão é a respiração."""
         resp = IDLE_AMP_Y
-        self.esq.x.alvo = self.dir.x.alvo = 0.0
+        # deriva lateral lenta: mesmo "parado", o braço nunca fica congelado
+        self.esq.x.alvo = math.sin(t * 1.7) * IDLE_SWAY
+        self.dir.x.alvo = math.sin(t * 1.7 + 2.0) * IDLE_SWAY
         if emocao == "feliz":
             # "cut cut": cutucada rápida para o ar, um braço de cada vez
             fase = (t * FELIZ_FREQ) % 2.0                     # 0-1: esquerdo, 1-2: direito

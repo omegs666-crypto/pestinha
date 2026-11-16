@@ -108,23 +108,35 @@ def draw_face(p, shape, gaze=(0.0, 0.0), blink=1.0, emotion="observando", carinh
 
 
 def _bracos(p, cor, bracos):
-    """Os braços mecânicos: cápsulas escuras com contorno neon, pendulares e elásticas."""
+    """Os braços mecânicos: ombro na lateral -> cotovelo curvo -> mão flutuante.
+
+    RENDERIZAÇÃO - como as molas viram desenho:
+    - as molas X/Y movem a MÃO; o ombro é fixo e fica escondido sob o corpo
+      (os braços são desenhados ANTES da casca, então a dobra sai da lateral);
+    - o membro é um quadratic ombro->cotovelo->mão em duas passadas
+      (contorno neon largo + metal fino = cápsula arredondada);
+    - na mão vale a ordem translate -> rotate (pêndulo) -> scale (squash
+      no Y, preservando volume).
+    """
     metal = QColor("#1e222b")
-    p.setBrush(metal)
-    p.setPen(QPen(cor, 5))
     for lado, braco in ((-1, bracos.esq), (1, bracos.dir)):
-        # ============================================================================
-        # RENDERIZAÇÃO - a ordem das transformações decide como a física aparece
-        # ----------------------------------------------------------------------------
-        # 1. translate: a mola de posição move a âncora (±72 cabe na janela de 200 px)
-        # 2. rotate: a mola pendular inclina a cápsula no sentido do movimento
-        # 3. scale: squash & stretch preservando volume (estica num eixo, encolhe no outro)
-        # ============================================================================
-        p.save()
-        p.translate(lado * 72 + braco.x.valor, 55 + braco.y.valor)
+        mx, my = lado * 64 + braco.x.valor, 55 + braco.y.valor      # a mão: quem as molas movem
+        ox, oy = lado * 52, 34                                       # ombro preso na lateral do corpo
+        ex, ey = (ox + mx) / 2 + lado * 6, (oy + my) / 2 - 7        # cotovelo: dobra para fora e sobe
+        membro = QPainterPath(QPointF(ox, oy))
+        membro.quadTo(QPointF(ex, ey), QPointF(mx, my))
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(cor, 13, Qt.SolidLine, Qt.RoundCap))          # contorno neon (largo)
+        p.drawPath(membro)
+        p.setPen(QPen(metal, 7, Qt.SolidLine, Qt.RoundCap))         # metal por dentro (fino)
+        p.drawPath(membro)
+        p.save()                                                   # a mão: pêndulo + squash & stretch
+        p.translate(mx, my)
         p.rotate(braco.rot.valor)
-        p.scale(1.0 / braco.squash.valor, braco.squash.valor)      # o gesto é vertical: estica no Y
-        p.drawRoundedRect(QRectF(lado * 8 - 16, -10, 32, 20), 10, 10)
+        p.scale(1.0 / braco.squash.valor, braco.squash.valor)
+        p.setBrush(metal)
+        p.setPen(QPen(cor, 5))
+        p.drawRoundedRect(QRectF(lado * 4 - 16, -11, 32, 22), 11, 11)
         p.restore()
 
 

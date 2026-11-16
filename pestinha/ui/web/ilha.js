@@ -332,8 +332,9 @@
       rigRot: .07, amoRot: .55,      // rotação: pêndulo mole, oscila antes de parar
       rigSq: .16, amoSq: .55,        // squash: deforma rápido, elasticidade quica
       ganhoRot: .9, ganhoSq: .06, sqMax: .35,
-      idleAmp: 2, idleFreq: 3, idleFase: 1.3,
+      idleAmp: 4, idleFreq: 3, idleFase: 1.3, idleSway: 1.8,
       falaAmp: 14, falaFreqE: 16, falaFreqD: 14, ganhoBoca: .3,
+      exag: 1.6,                            // exagero do mascote: na escala .28 o movimento some sem ele
       impulsoP: .08, impulsoX: 3, impulsoY: 4, impulsoAlcance: 12,
       // gestos por emoção (espelha EMOCAO_* de bracos.py) - energia amplifica a fala
       energia: { feliz: 1.3, bravo: 1.5, assustado: 1.2, dramatico: 1.4, curioso: 1, observando: .8, contente: .9, triste: .4, dormindo: .1 },
@@ -399,7 +400,9 @@
         } else {
           // repouso: cada emoção tem seu gesto (espelha _repouso de bracos.py)
           const resp = emocao === 'contente' ? 3 : C.idleAmp;
-          bra.esq.x.t = bra.dir.x.t = 0;
+          // deriva lateral lenta: mesmo parado, o braço nunca congela
+          bra.esq.x.t = Math.sin(tm * 1.7) * C.idleSway;
+          bra.dir.x.t = Math.sin(tm * 1.7 + 2) * C.idleSway;
           if (emocao === 'feliz') {                            // "cut cut": cutucada alternada para o ar
             const fase = (tm * C.felizFreq) % 2;
             bra.esq.y.t = fase < C.felizJanela ? -C.felizJab : Math.sin(tm * C.idleFreq) * resp;
@@ -432,14 +435,21 @@
             bra.dir.y.t = Math.sin(tm * C.idleFreq + C.idleFase) * resp;
           }
         }
-        // renderização: translate (posição) -> rotate (pêndulo) -> scale (squash & stretch no Y)
-        ctx.fillStyle = '#1e222b'; ctx.strokeStyle = bracos; ctx.lineWidth = 5;
+        // renderização: ombro fixo sob a casca -> cotovelo curvo -> mão com pêndulo e squash
+        ctx.lineCap = 'round';
         for (const b of [bra.esq, bra.dir]) {
-          ctx.save();
-          ctx.translate(b.lado * 72 + b.x.v, 55 + b.y.v);
+          const mx = b.lado * 64 + b.x.v * C.exag, my = 55 + b.y.v * C.exag;   // a mão: exagero p/ ler na escala .28
+          const ox = b.lado * 52, oy = 34, ex = (ox + mx) / 2 + b.lado * 6, ey = (oy + my) / 2 - 7;
+          ctx.strokeStyle = bracos; ctx.lineWidth = 13;                       // membro: contorno neon largo
+          ctx.beginPath(); ctx.moveTo(ox, oy); ctx.quadraticCurveTo(ex, ey, mx, my); ctx.stroke();
+          ctx.strokeStyle = '#1e222b'; ctx.lineWidth = 7;                     // metal por dentro
+          ctx.beginPath(); ctx.moveTo(ox, oy); ctx.quadraticCurveTo(ex, ey, mx, my); ctx.stroke();
+          ctx.save();                                                         // a mão: pêndulo + squash & stretch
+          ctx.translate(mx, my);
           ctx.rotate(b.rot.v * Math.PI / 180);
           ctx.scale(1 / b.sq.v, b.sq.v);
-          rr(b.lado * 8 - 16, -10, 32, 20, 10); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#1e222b'; ctx.strokeStyle = bracos; ctx.lineWidth = 5;
+          rr(b.lado * 4 - 16, -11, 32, 22, 11); ctx.fill(); ctx.stroke();
           ctx.restore();
         }
       }
