@@ -126,6 +126,7 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         self.brain = LIFBrain(seed=pet_def["seed"], temperament=pet_def.get("temperamento"))
         self.state_file = self.pet_paths.nervous
         self.brain.load(str(self.state_file))
+        self.mente = self._carregar_mente()       # a outra persona: quem fala pela LLM (Jorge)
         self.intensities = {}       # última entrada da rede (para o monitor)
         self.pulso_recusa = 0.0     # 1 quando ele recusou um pedido (vira RECUSA na rede)
         self.drives = Drives()
@@ -661,6 +662,27 @@ class PestinhaApp(SessaoMixin, InteracaoMixin, QObject):
         if voz:
             self.voz.dizer(texto, now)
         return True
+
+    def _carregar_mente(self):
+        """A mente: o persona que fala pela LLM (Jorge). Aparência para o avatar,
+        persona_mente.txt (fallback persona.txt) para o system prompt. Nunca quebra o app."""
+        mente_id = str(self.perms.get("pet_mente") or "jorge")
+        try:
+            mente_def = config.load_pet(self.paths, mente_id)
+            pasta = self.paths.conteudo(mente_id).proprio
+            persona = ""
+            for arquivo in ("persona_mente.txt", "persona.txt"):
+                try:
+                    persona = " ".join((pasta / arquivo).read_text(encoding="utf-8").split())[:800]
+                    if persona:
+                        break
+                except OSError:
+                    continue
+            return {"id": mente_id, "nome": str(mente_def.get("nome") or mente_id.capitalize())[:40],
+                    "aparencia": mente_def.get("aparencia") or {}, "persona": persona}
+        except Exception as error:
+            log(f"[mente] não carregou {mente_id}: {error}")
+            return {"id": mente_id, "nome": "Jorge", "aparencia": {}, "persona": ""}
 
     # ----- modo um-persona-só: ele mora na ilha; arrastado para fora, fica livre até cansar -----
     def _emitir_solo(self):

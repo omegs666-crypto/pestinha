@@ -331,6 +331,98 @@ ul, ol { list-style: none; }
 /* a área tracejada de espaço livre só aparece enquanto se arrasta um widget */
 .pa-caja:not(.is-arrastra) .pa-vacio { opacity: 0; }
 
+/* ── o novo do Pestinha: cabeçalho hero, faixa fixa, marca d'água e widgets dele ─ */
+
+/* marca d'água: um grafo gigante atrás do card (desenho atrás de desenho) */
+.pa-marca-agua { position: absolute; right: -90px; top: 60px; z-index: 0; width: min(58%, 640px); height: auto;
+  color: var(--pa-azul); opacity: .05; pointer-events: none; }
+:root[data-tema="oscuro"] .pa-marca-agua { opacity: .07; }
+.pa-cab-card, .pa-cuerpo { position: relative; z-index: 1; }
+
+/* título: número/raia grande ao lado de letra miúda */
+.pa-titulo-sub { font: 500 11px/1 var(--pa-sans); letter-spacing: .14em; text-transform: uppercase;
+  color: var(--pa-suave); margin-left: 10px; vertical-align: baseline; }
+:root[data-tema="oscuro"] .pa-titulo-sub { vertical-align: middle; }
+
+/* a faixa fixa: o essencial dele sempre visível, qualquer que seja a grade */
+.pa-fixo { display: flex; gap: 8px; margin-right: 4px; }
+.pa-fx { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 62px; padding: 7px 10px 6px;
+  border-radius: 13px; background: var(--pa-card); box-shadow: 0 0 0 1px var(--pa-linea); }
+.pa-fx b { font: 600 14px/1 var(--pa-cifras); letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+  max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-fx small { font: 500 9px/1 var(--pa-sans); letter-spacing: .1em; text-transform: uppercase; color: var(--pa-tenue); }
+.pa-fx i { width: 7px; height: 7px; border-radius: 50%; background: var(--pa-azul); opacity: 0; transition: opacity .3s;
+  position: absolute; margin-left: -50px; margin-top: 4px; }
+.pa-fx i.on { opacity: 1; }
+:root[data-tema="oscuro"] .pa-fx { background: rgba(255, 255, 255, .04); }
+
+/* data-on genérico: chips e botões que acendem com o estado */
+[data-on] { transition: opacity .3s, background-color .3s, color .3s, box-shadow .3s; }
+
+/* relógio: letra gigante ao lado de miúda */
+.pa-r { display: flex; flex-direction: column; justify-content: center; height: 100%; min-height: 0; }
+.pa-r-h { font: 400 46px/1 var(--pa-cifras); letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.pa-r-h small { font-size: 20px; color: var(--pa-suave); letter-spacing: -.03em; }
+.pa-r-d { margin-top: 6px; font: 500 12px/1 var(--pa-sans); color: var(--pa-suave); text-transform: capitalize; }
+.pa-r-extra { display: none; align-items: center; gap: 8px; margin-top: 12px; font: 500 12px/1 var(--pa-sans); color: var(--pa-suave); }
+.pa-r-extra i { width: 4px; height: 4px; border-radius: 50%; background: var(--pa-tenue); }
+.pa-r-extra b { font-family: var(--pa-cifras); font-weight: 500; color: var(--pa-tinta); }
+@container pa (min-height: 150px) { .pa-r-extra { display: flex; } }
+@container pa (min-width: 220px) { .pa-r-h { font-size: 56px; } }
+
+/* humor dele: a palavra grande + chips de estado */
+.pa-e { display: flex; flex-direction: column; justify-content: center; height: 100%; min-height: 0; }
+.pa-e-grande { font: 600 34px/1.05 var(--pa-sans); letter-spacing: -.04em; text-transform: capitalize; }
+.pa-e-sub { margin-top: 8px; font: 500 12px/1 var(--pa-sans); color: var(--pa-suave); }
+.pa-e-sub b { font-family: var(--pa-cifras); font-weight: 500; color: var(--pa-tinta); }
+.pa-e-chips { display: none; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.pa-e-chips i { padding: 4px 9px; border-radius: 99px; font: 600 10px/1 var(--pa-sans); letter-spacing: .06em;
+  background: var(--pa-azul-suave); color: var(--pa-azul-t); opacity: .35; font-style: normal; }
+.pa-e-chips i.on { opacity: 1; }
+.pa-e-chips i.ou { background: rgba(226, 177, 60, .15); color: #e2b13c; }
+@container pa (min-height: 150px) { .pa-e-chips { display: flex; } }
+
+/* ações rápidas: grade de funções que acendem com o estado */
+.pa-f { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 7px; height: 100%; align-content: start; }
+.pa-f button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 6px; border: 0; border-radius: 13px; cursor: pointer; background: var(--pa-card);
+  color: var(--pa-suave); font: 600 10.5px/1 var(--pa-sans); letter-spacing: .02em;
+  box-shadow: 0 0 0 1px var(--pa-linea); }
+.pa-f button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.pa-f button.on { background: var(--pa-azul-suave); color: var(--pa-azul-t); box-shadow: 0 0 0 1px rgba(var(--pa-azul-rgb), .4); }
+@media (hover: hover) { .pa-f button:hover { color: var(--pa-tinta); box-shadow: 0 0 0 1px rgba(var(--pa-azul-rgb), .5); } }
+.pa-f button:active { transform: scale(.94); }
+@container pa (max-height: 110px) { .pa-f { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); } .pa-f button { flex-direction: row; padding: 6px 8px; gap: 5px; } .pa-f button svg { width: 13px; height: 13px; } }
+
+/* a nota: papel preso, editável, o texto viaja no layout */
+.pa-t { position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column;
+  border-radius: 12px; background: linear-gradient(180deg, rgba(var(--pa-azul-rgb), .07), rgba(var(--pa-azul-rgb), .03));
+  box-shadow: inset 0 0 0 1px var(--pa-linea); overflow: hidden; }
+.pa-t-pin { position: absolute; top: 7px; right: 9px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--pa-naranja); box-shadow: 0 1px 3px rgba(var(--pa-naranja-rgb), .5); }
+.pa-t-txt { flex: 1; min-height: 0; padding: 12px 26px 8px 13px; overflow-y: auto; outline: none;
+  font: 500 12.5px/1.5 var(--pa-sans); color: var(--pa-tinta); white-space: pre-wrap; word-break: break-word; }
+.pa-t-txt:empty::before { content: "Escreve aqui…"; color: var(--pa-tenue); }
+.pa-t-dica { padding: 4px 13px 7px; font: 500 9px/1.3 var(--pa-sans); letter-spacing: .04em; color: var(--pa-tenue); }
+
+/* pulso: sparkline viva das métricas, desenho atrás de desenho (área + 2 linhas) */
+.pa-s { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.pa-s-v { display: flex; align-items: baseline; gap: 8px; }
+.pa-s-v b { font: 400 26px/1 var(--pa-cifras); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.pa-s-v span { font: 500 11px/1 var(--pa-sans); color: var(--pa-suave); }
+.pa-s-g { flex: 1; min-height: 0; margin-top: 8px; }
+.pa-s-g svg { width: 100%; height: 100%; overflow: visible; }
+.pa-s-linha { fill: none; stroke: var(--pa-azul); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.pa-s-linha.pa-s-2 { stroke: var(--pa-naranja); stroke-width: 1.6; opacity: .8; }
+.pa-s-area { fill: rgba(var(--pa-azul-rgb), .12); stroke: none; }
+.pa-s-leg { display: none; align-items: center; gap: 7px; margin-top: 8px; font: 500 10px/1 var(--pa-sans); color: var(--pa-tenue); }
+.pa-s-leg i { width: 10px; height: 3px; border-radius: 2px; background: var(--pa-azul); }
+.pa-s-leg i.a2 { background: var(--pa-naranja); margin-left: 8px; }
+@container pa (min-height: 150px) { .pa-s-leg { display: flex; } }
+
+/* a paleta cresceu: rola em vez de estourar */
+.pa-pal-lista { max-height: 430px; overflow-y: auto; padding-right: 4px; }
+
 /* ── movimiento reducido: los widgets se colocan de golpe, sin muelles ni vuelos ─ */
 @media (prefers-reduced-motion: reduce) {
   .pa-w, .pa-w.is-mueve, .pa-w.is-tamano, .pa-encaje, .pa-caja, .pa-rejilla, .pa-datos-ok, .pa-i-ok path { transition-duration: .01s; transition-delay: 0s; }

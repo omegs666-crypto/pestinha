@@ -16,11 +16,25 @@
     <div class="pa-fondo" aria-hidden="true"><i class="pa-halo pa-h1"></i><i class="pa-halo pa-h2"></i><i class="pa-grano"></i></div>
 
     <section class="pa-card" aria-labelledby="pa-titulo">
+      <!-- marca d'água: um grafo neural gigante atrás de tudo (desenho atrás de desenho) -->
+      <svg class="pa-marca-agua" viewBox="0 0 640 420" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M120 90l150 60 130-40 120 70M120 90l90 160 160-100M270 150l-60 100 200-30 110-110M270 150l140 70M210 250l200-30M520 180l-110 40"/>
+          <circle cx="120" cy="90" r="26"/><circle cx="270" cy="150" r="34"/><circle cx="400" cy="110" r="20"/>
+          <circle cx="520" cy="180" r="30"/><circle cx="210" cy="250" r="22"/><circle cx="410" cy="220" r="26"/>
+        </g>
+      </svg>
       <header class="pa-cab-card">
         <span class="pa-marca" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7.5" height="9" rx="2.2"/><rect x="13" y="3.5" width="7.5" height="5" rx="2.2"/><rect x="13" y="10.5" width="7.5" height="10" rx="2.2"/><rect x="3.5" y="14.5" width="7.5" height="6" rx="2.2"/></svg></span>
         <div class="pa-cab-t">
-          <h1 id="pa-titulo">Painel</h1>
+          <h1 id="pa-titulo">Painel<small class="pa-titulo-sub">do Pestinha</small></h1>
           <p>Arraste um widget pela barra superior; a alça do canto muda o tamanho.</p>
+        </div>
+        <!-- informação fixa: o essencial dele, sempre visível, mesmo com a grade cheia -->
+        <div class="pa-fixo" aria-label="Estado agora">
+          <span class="pa-fx"><i data-on="processando"></i><b data-relogio>--:--</b><small>hora</small></span>
+          <span class="pa-fx"><b data-live="emocao">—</b><small>humor dele</small></span>
+          <span class="pa-fx"><b data-live="energia_pct">--</b><small>energia</small></span>
         </div>
         <div class="pa-acciones">
           <button class="pa-b pa-b-sec" type="button" data-restaurar>
@@ -64,6 +78,18 @@
 
   <script src="parrilla.js"></script>
   <script>
+  // relógio: um tick para todos os widgets de hora (texto + segundos menores ao lado)
+  const hist = { energia: [], atividade: [] };
+  const rotaSpark = (ys, W, H) => ys.map((y, i) => (i ? 'L' : 'M') + (i / (ys.length - 1) * W).toFixed(1) + ' ' + (H - Math.max(0, Math.min(100, y)) / 100 * H).toFixed(1)).join(' ');
+  const DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  setInterval(() => {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    document.querySelectorAll('[data-relogio]').forEach(el => el.textContent = p(d.getHours()) + ':' + p(d.getMinutes()));
+    document.querySelectorAll('[data-relseg]').forEach(el => el.textContent = ':' + p(d.getSeconds()));
+    document.querySelectorAll('[data-reldata]').forEach(el => el.textContent = DIAS[d.getDay()] + ', ' + d.getDate() + ' ' + MESES[d.getMonth()]);
+  }, 1000);
+
   // Só monta quando a ilha manda o layout salvo (ou nada): a ponte fica no pai.
   window.addEventListener('message', ev => {
     const d = ev.data || {};
@@ -86,6 +112,21 @@
       document.querySelectorAll('[data-live-p]').forEach(el => {
         const p = Number(v[el.dataset.livep]);
         if (Number.isFinite(p)) el.style.setProperty('--p', Math.max(0, Math.min(1, p / 100)).toFixed(3));
+      });
+      // data-on: o elemento acende quando a chave é verdadeira (pausado, processando, voz…)
+      document.querySelectorAll('[data-on]').forEach(el => el.classList.toggle('on', !!v[el.dataset.on]));
+      // sparklines: histórico local das métricas, desenhado a cada pacote
+      for (const chave of ['energia', 'atividade']) {
+        const n = v[chave + '_n'];
+        if (typeof n === 'number') { hist[chave].push(n); if (hist[chave].length > 48) hist[chave].shift(); }
+      }
+      document.querySelectorAll('[data-spark]').forEach(el => {
+        const ys = hist[el.dataset.spark];
+        if (ys.length > 1) el.setAttribute('d', rotaSpark(ys, 240, 70));
+      });
+      document.querySelectorAll('[data-spark-area]').forEach(el => {
+        const ys = hist[el.dataset.sparkArea];
+        if (ys.length > 1) el.setAttribute('d', rotaSpark(ys, 240, 70) + ' L240 70 L0 70 Z');
       });
     }
   });

@@ -52,6 +52,8 @@ DEFAULT_PERMISSIONS = {
     "fogos": True,             # fogo de artifício quando ele fica feliz de verdade (rede)
     "segundo_celebro": False,  # escreve o diário e o aprendizado dele em Markdown num vault do Obsidian
     "segundo_celebro_pasta": "",  # pasta do vault escolhida na tela inicial (vazio = não configurado)
+    "pet_mente": "jorge",      # o persona que fala pela LLM (a mente); o pet do corpo é "pet"
+    "mente_llm": True,         # a mente responde no chat e comenta os insights
     "voz": False,              # fala em voz alta o que ele sente (frases de pets/<pet>/falas/)
     "voz_modo": "sistema",     # "sistema" (voz do SO), "tts" (servidor TTS local) ou "llm" (LLM local)
     "voz_url": "",             # servidor local (TTS ou LLM, ex.: http://localhost:11434/api/generate)

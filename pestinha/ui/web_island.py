@@ -1,9 +1,11 @@
 """Núcleo: a ilha em WebEngine, sem bordas e sempre no topo.
 
-Dois modos:
+Três modos:
 - "topo": a cápsula fica colada no topo da tela, centralizada (como a pílula do Coucou).
-- "livre": depois de "desgrudar" (puxar a barra para baixo), ela vira um flutuante que se arrasta
-  para qualquer lugar. Soltando perto da borda de cima, ela encaixa de volta no topo.
+- "livre": depois de "desgrudar", ela vira um flutuante que se arrasta para qualquer lugar.
+  Soltando perto da borda de cima, ela encaixa de volta no topo.
+- "rodape": soltando perto da borda de baixo, ela encolhe numa mini-faixa colada no rodapé
+  (o "modo escondido" do Coucou). Puxando para cima, desgruda de volta para o modo livre.
 
 A janela tem tamanho fixo (a maior área que a interface usa) e fica quase toda transparente.
 Toda a animação roda em CSS/canvas dentro da página; a página informa pela ponte o retângulo
@@ -39,6 +41,11 @@ ENCAIXE_PX = 24                 # solta a até esta distância do topo: volta a 
 def posicao_topo(tela, largura):
     """Encostada no topo, centralizada na tela."""
     return tela.left() + (tela.width() - largura) // 2, tela.top()
+
+
+def posicao_rodape(tela, largura, altura):
+    """Encostada no rodapé (logo acima da barra de tarefas), centralizada na tela."""
+    return tela.left() + (tela.width() - largura) // 2, tela.top() + tela.height() - altura
 
 
 def limitar_posicao(x, y, tela, largura, altura, regiao):
@@ -94,7 +101,14 @@ class WebIlha(QWidget):
             x, y, _ = dados
             tela = (QGuiApplication.screenAt(QPoint(x, y)) or QGuiApplication.primaryScreen()).geometry()
             self.modo = "livre"
+            self.ponte.modo = "livre"
             self.move(*limitar_posicao(x, y, tela, largura, altura, self._regiao))
+            return
+        if dados and dados[2] == "rodape":
+            self.modo = "rodape"
+            self.ponte.modo = "rodape"
+            tela = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
+            self.move(*posicao_rodape(tela, largura, altura))
             return
         tela = self.screen().geometry() if self.screen() else QGuiApplication.primaryScreen().geometry()
         x_topo, y_topo = posicao_topo(tela, largura)
@@ -103,30 +117,44 @@ class WebIlha(QWidget):
             x_topo = limitar_posicao(dados[0], y_topo, tela, largura, altura, self._regiao)[0]
         self.move(x_topo, y_topo)
 
-    # ----- modo: encostada no topo ou livre -----
+    # ----- modo: encostada no topo, livre ou rodapé -----
     def desgrudar(self):
-        """Puxada para baixo: a cápsula sai do topo e passa a acompanhar o mouse."""
-        if self.modo != "livre":
-            self.modo = "livre"
-            self.ponte.definir_modo("livre")
+        """Puxada para fora da borda: a cápsula solta e passa a acompanhar o mouse."""
+        if self.modo == "livre":
+            return
+        if self.modo == "rodape":
+            # o núcleo sai da âncora de baixo para o topo da janela: compensa para ficar sob o cursor
+            self.move(self.x(), self.y() + self._regiao.top() - 6)
+        self.modo = "livre"
+        self.ponte.definir_modo("livre")
 
     def _encaixar(self, tela):
         self.modo = "topo"
         self.move(*posicao_topo(tela, self.width()))
         self.ponte.definir_modo("topo")
 
+    def _encaixar_rodape(self, tela):
+        self.modo = "rodape"
+        self.move(*posicao_rodape(tela, self.width(), self.height()))
+        self.ponte.definir_modo("rodape")
+
     def ao_soltar(self):
-        """Fim do arraste: se a cápsula ficou colada na borda de cima, volta a encostar."""
+        """Fim do arraste: colada em cima volta ao topo; colada embaixo vira a mini-faixa do rodapé."""
         if self.modo == "livre":
-            tela = (QGuiApplication.screenAt(self.geometry().center()) or self.screen()).geometry()
-            if self.y() + self._regiao.top() <= tela.top() + ENCAIXE_PX:
-                self._encaixar(tela)
+            centro = self.geometry().center()
+            tela_cheia = (QGuiApplication.screenAt(centro) or self.screen()).geometry()
+            if self.y() + self._regiao.top() <= tela_cheia.top() + ENCAIXE_PX:
+                self._encaixar(tela_cheia)
+            else:
+                disponivel = (QGuiApplication.screenAt(centro) or self.screen()).availableGeometry()
+                if self.y() + self._regiao.bottom() >= disponivel.bottom() - ENCAIXE_PX + 1:
+                    self._encaixar_rodape(disponivel)
         self.salvar_posicao()
 
     # ----- arrastar: a cápsula vai para onde você quiser, e a posição fica salva -----
     def mover_por(self, dx, dy):
-        if self.modo == "topo":
-            # encostada: desliza na horizontal pelo topo; subir/descer só depois de desgrudar
+        if self.modo in ("topo", "rodape"):
+            # encostada: desliza na horizontal pela borda; subir/descer só depois de desgrudar
             dy = 0
             if not dx:
                 return
@@ -143,7 +171,7 @@ class WebIlha(QWidget):
             dados = json.loads(self._arquivo_posicao().read_text(encoding="utf-8"))
             x, y = dados["x"], dados["y"]
             modo = dados.get("modo", "livre")
-            return (x, y, modo) if type(x) is int and type(y) is int and modo in ("topo", "livre") else None
+            return (x, y, modo) if type(x) is int and type(y) is int and modo in ("topo", "livre", "rodape") else None
         except (OSError, ValueError, KeyError, TypeError):
             return None
 
@@ -164,6 +192,14 @@ class WebIlha(QWidget):
             tela = (QGuiApplication.screenAt(QPoint(self.x() + self._regiao.center().x(), self.y()))
                     or self.screen()).geometry()
             novo = limitar_posicao(self.x(), self.y(), tela, self.width(), self.height(), self._regiao)
+            if novo != (self.x(), self.y()):
+                self.move(*novo)
+        elif self.isVisible() and self.modo == "rodape":
+            # a base da janela é a base do núcleo: mantém colada no rodapé mesmo mudando de tamanho
+            tela = (QGuiApplication.screenAt(QPoint(self.x() + self._regiao.center().x(), self.y()))
+                    or self.screen()).availableGeometry()
+            novo = limitar_posicao(self.x(), tela.top() + tela.height() - self.height(),
+                                   tela, self.width(), self.height(), self._regiao)
             if novo != (self.x(), self.y()):
                 self.move(*novo)
 

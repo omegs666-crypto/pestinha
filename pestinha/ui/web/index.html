@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pestinha · Núcleo</title>
-<link rel="stylesheet" href="ilha.css">
+<link rel="stylesheet" href="ilha.css?v=2026-11-17a">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body>
@@ -18,6 +18,7 @@
       <div class="meio">
         <canvas id="mascote" aria-label="Pet: rosto" title="Clique: cutucar · Esfregue: carinho · 2 cliques: carinho"></canvas>
         <canvas id="orbe" aria-label="Núcleo: estado do sistema"></canvas>
+        <canvas id="jorge-ilha" aria-label="Jorge: a mente" title="Jorge dorme aqui — clique para chamar" hidden></canvas>
         <p class="balao" id="balao" aria-live="polite" title="Clique para abrir"><span class="origem" id="balao-origem"></span><span id="balao-txt"></span></p>
       </div>
       <span class="hora" id="hora">--:--</span>
@@ -126,6 +127,7 @@
             <button type="button" class="chave" data-acao="travessuras" aria-pressed="false"><span>Travessuras</span><i></i></button>
             <button type="button" class="chave" data-acao="avion" aria-pressed="false"><span>Modo avião (sem Ollama)</span><i></i></button>
             <button type="button" class="chave" data-acao="solo" aria-pressed="false"><span>Um persona só (mora na ilha)</span><i></i></button>
+            <button type="button" class="chave" data-acao="mente" aria-pressed="true"><span>Jorge responde pela IA</span><i></i></button>
             <button type="button" class="chave" data-acao="narrador" aria-pressed="true"><span>Narrador comenta</span><i></i></button>
           </article>
           <article class="ctl ctl-janela">
@@ -158,6 +160,36 @@
         </div>
       </section>
 
+      <!-- Cérebro: a memória do pet como grafo vivo (episódios, emoções, ações, pistas) -->
+      <section class="vista" data-vista="cerebro">
+        <div class="cerebro">
+          <canvas id="cerebro-cv" aria-label="Mapa da memória do pet"></canvas>
+          <div class="cb-filtros" id="cb-filtros">
+            <button type="button" class="pilula ligada" data-f="">todos</button>
+            <button type="button" class="pilula" data-f="episodio">memórias</button>
+            <button type="button" class="pilula" data-f="emocao">emoções</button>
+            <button type="button" class="pilula" data-f="acao">ações</button>
+            <button type="button" class="pilula" data-f="contexto">contextos</button>
+            <button type="button" class="pilula" data-f="drive">drives</button>
+            <button type="button" class="pilula" data-f="pista">pistas</button>
+            <button type="button" class="pilula" data-f="voce">você</button>
+          </div>
+          <div class="cb-info" id="cb-info" hidden></div>
+          <div class="cb-legenda" aria-hidden="true">
+            <span><i style="background:#45e6ff"></i>pet</span>
+            <span><i style="background:#b07bff"></i>emoção</span>
+            <span><i style="background:#4dffb0"></i>ação</span>
+            <span><i style="background:#45a3ff"></i>contexto</span>
+            <span><i style="background:#8a90a6"></i>memória</span>
+            <span><i style="background:#ffb547"></i>drive</span>
+            <span><i style="background:#ff6bd6"></i>pista</span>
+            <span><i style="background:#ff9de2"></i>você</span>
+            <span><i style="background:#9aa4ff"></i>convivência</span>
+            <span><i style="background:#c9d1e3"></i>sonho</span>
+          </div>
+        </div>
+      </section>
+
       <section class="vista" data-vista="chat">
         <div class="chat">
           <div class="topo">
@@ -169,6 +201,9 @@
             <button type="button" class="pilula" id="atualizar">Atualizar</button>
             <label class="marca"><input type="checkbox" id="ler"> Ler respostas</label>
             <button type="button" class="pilula" id="analisar">Analisar resultados</button>
+            <span class="jorgito-wrap" id="jorgito-wrap" title="A mente do Pestinha" hidden>
+              <canvas id="jorgito" width="34" height="34"></canvas><b id="jorgito-nome">Jorge</b>
+            </span>
           </div>
           <div class="aviso-chat" id="aviso-nuvem" hidden>Este modelo roda na nuvem do Ollama: suas mensagens saem do PC.</div>
           <div class="erro" id="erro" role="alert" hidden></div>
@@ -198,6 +233,7 @@
       <button type="button" data-vista="som"><svg viewBox="0 0 24 24"><path d="M4 12h2M8 8v8M12 5v14M16 9v6M20 12h0"/></svg><span class="dica">Som do sistema</span></button>
       <button type="button" data-vista="grade"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg><span class="dica">Grade de widgets</span></button>
       <button type="button" data-vista="fluxos"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6.5l7 4.5M8.5 17.5l7-4.5"/></svg><span class="dica">Diagramas</span></button>
+      <button type="button" data-vista="cerebro"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="4.5" cy="6" r="1.8"/><circle cx="19.5" cy="6" r="1.8"/><circle cx="4.5" cy="18" r="1.8"/><circle cx="19.5" cy="18" r="1.8"/><path d="M10.3 10.3L6.2 6.9M13.7 10.3l4.1-3.4M10.3 13.7l-4.1 3.4M13.7 13.7l4.1 3.4"/></svg><span class="dica">Cérebro dele</span></button>
       <button type="button" data-vista="chat"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/></svg><span class="dica">Chat local</span></button>
       <button type="button" data-vista="painel"><svg viewBox="0 0 24 24"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2"/><circle cx="10" cy="16" r="2"/></svg><span class="dica">Controles</span></button>
       <i class="sep"></i>
@@ -211,6 +247,6 @@
     <i class="contagem" id="contagem" aria-hidden="true"></i>
   </div>
 </div>
-<script src="ilha.js"></script>
+<script src="ilha.js?v=2026-11-17a"></script>
 </body>
 </html>

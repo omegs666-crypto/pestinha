@@ -137,6 +137,59 @@ def test_estado_normaliza_dados_corrompidos(tmp_path):
     assert isinstance(dados["logs"], list)
 
 
+def test_grafo_da_memoria_monta_nos_e_arestas(tmp_path):
+    """A aba Cérebro recebe o mapa da memória: episódio ligado a ação, emoção e contexto."""
+    _qt()
+    app = FakeApp(tmp_path)
+    app.memory = SimpleNamespace(
+        recent=[{"id": "1", "quando": "2026-11-16T10:00:00", "contexto": "WORK|feliz",
+                 "acao": "bilhete", "resultado": "aceitou", "valencia": 0.7}],
+        table={"WORK|feliz": {"bilhete": [3, 0.5]}})
+    app.conditioning = SimpleNamespace(V={"PRESS": 0.9})
+    app.drives = SimpleNamespace(energy=0.6, stimulation=0.3, contact=0.2)
+    app.pet_state = SimpleNamespace(emotion="feliz")
+    dados = json.loads(Ponte(app).grafo())
+    tipos = {n["tipo"] for n in dados["nos"]}
+    assert {"pet", "emocao", "acao", "contexto", "episodio", "drive", "pista"} <= tipos
+    assert any(a["de"].startswith("ep:") for a in dados["arestas"])
+    assert any(a.get("valencia") == pytest.approx(0.7) for a in dados["arestas"])
+
+
+def test_grafo_sem_memoria_nao_quebra(tmp_path):
+    """Sem memória ainda, o grafo mostra só o pet no centro — nunca erro."""
+    _qt()
+    dados = json.loads(Ponte(FakeApp(tmp_path)).grafo())
+    assert dados["nos"] and dados["nos"][0]["tipo"] == "pet"
+
+
+def test_chat_com_mente_injeta_persona_do_jorge(tmp_path):
+    """Com a mente ligada, o chat recebe o system do Jorge na frente do histórico."""
+    _qt()
+    app = FakeApp(tmp_path)
+    app.perms["mente_llm"] = True
+    app.mente = {"nome": "Jorge", "persona": "coach confiante e útil"}
+    ponte = Ponte(app)
+    capturado = {}
+    ponte._ollama.chat_stream_async = lambda m, msgs: capturado.update(msgs=msgs)
+    ponte.enviar_chat("modelo", json.dumps([{"role": "user", "content": "oi"}]))
+    assert capturado["msgs"][0]["role"] == "system"
+    assert "Jorge" in capturado["msgs"][0]["content"]
+    assert capturado["msgs"][1]["role"] == "user"
+
+
+def test_chat_sem_mente_nao_injeta_system(tmp_path):
+    """Toggle desligado = chat cru, sem persona injetada."""
+    _qt()
+    app = FakeApp(tmp_path)
+    app.perms["mente_llm"] = False
+    app.mente = {"nome": "Jorge", "persona": "x"}
+    ponte = Ponte(app)
+    capturado = {}
+    ponte._ollama.chat_stream_async = lambda m, msgs: capturado.update(msgs=msgs)
+    ponte.enviar_chat("modelo", json.dumps([{"role": "user", "content": "oi"}]))
+    assert capturado["msgs"][0]["role"] == "user"
+
+
 def test_pagina_nao_carrega_recursos_externos():
     """Privacidade: nada de fontes, scripts ou imagens vindos da internet."""
     proibido = re.compile(r"""(src|href)\s*=\s*["']https?://|@import\s+(url\()?["']?https?://|fetch\(\s*["']https?://""")

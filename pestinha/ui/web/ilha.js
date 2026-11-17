@@ -20,10 +20,11 @@
 
   const TAM = {
     compacta: { w: 380, h: 46, r: 23 },
+    rodape: { w: 250, h: 32, r: 16 },        // modo escondido: mini-faixa no rodapé (como o Coucou)
     home: { w: 1000, h: 480, r: 30 },
     grande: { w: 1000, h: 594, r: 30 },
   };
-  const VISTAS_GRANDES = new Set(['som', 'painel', 'grade', 'fluxos', 'chat']);
+  const VISTAS_GRANDES = new Set(['som', 'painel', 'grade', 'fluxos', 'chat', 'cerebro']);
   const HUMORES = {
     calmo: ['#45e6ff', '#7c6bff'],
     processando: ['#4dffb0', '#45a3ff'],
@@ -36,6 +37,7 @@
 
   let ponte = null;
   let modoTopo = true;                    // encostada no topo da tela (false: livre, arrastável)
+  let modoRodape = false;                 // encostada no rodapé: mini-faixa, desgruda puxando para cima
   const DESGRUDAR_PX = 14;                // puxar este tanto para baixo a solta do topo
   let estado = {};
   let aberta = false, fixada = false, vista = 'home';
@@ -51,22 +53,28 @@
     nucleo.style.width = mola.w.toFixed(1) + 'px';
     nucleo.style.height = mola.h.toFixed(1) + 'px';
     const r = mola.r.toFixed(1) + 'px';
-    nucleo.style.borderRadius = modoTopo ? `0 0 ${r} ${r}` : r;   // no topo, só as bordas de baixo são arredondadas
+    // topo: arredonda só embaixo; rodapé: só em cima; livre: todos os cantos
+    nucleo.style.borderRadius = modoRodape ? `${r} ${r} 0 0` : modoTopo ? `0 0 ${r} ${r}` : r;
   }
 
-  function aplicarModo(topo) {
-    modoTopo = topo;
-    nucleo.classList.toggle('topo', topo);
-    nucleo.classList.toggle('livre', !topo);
+  function aplicarModo(m) {
+    modoTopo = m === 'topo';
+    modoRodape = m === 'rodape';
+    nucleo.classList.toggle('topo', modoTopo);
+    nucleo.classList.toggle('livre', m === 'livre');
+    nucleo.classList.toggle('rodape', modoRodape);
     aplicarForma();
     informarRegiao(mola.w, mola.h);
+    moverPara(tamanhoAtual());        // rodapé tem tamanho próprio (mini-faixa)
   }
 
   function informarRegiao(w, h) {
     if (!ponte) return;
     const margem = 18, largura = document.documentElement.clientWidth;
     const x = (largura - w) / 2 - margem;
-    ponte.definir_regiao(Math.round(x), 0, Math.round(w + margem * 2), Math.round(h + 6 + margem * 2));
+    // no rodapé o núcleo é ancorado na base da janela: a região acompanha ele lá embaixo
+    const y = modoRodape ? document.documentElement.clientHeight - h - margem - 6 : 0;
+    ponte.definir_regiao(Math.round(x), Math.round(y), Math.round(w + margem * 2), Math.round(h + 6 + margem * 2));
   }
 
   // Valores do Coucou (island/island.ts + core/anim.ts): abrir é uma mola com resposta 0,5 s e amortecimento 0,72
@@ -136,12 +144,13 @@
 
   function tamanhoAtual() {
     if (aberta) return VISTAS_GRANDES.has(vista) ? TAM.grande : TAM.home;
+    const base = modoRodape ? TAM.rodape : TAM.compacta;
     const balao = $('#balao');
     if (balao.classList.contains('ativo')) {
       const extra = Math.min(560, balao.scrollWidth + 22);   // largura real do texto, mesmo durante a transição
-      return { ...TAM.compacta, w: TAM.compacta.w + extra };
+      return { ...base, w: base.w + extra };
     }
-    return TAM.compacta;
+    return base;
   }
 
   function abrir(valor) {
@@ -213,14 +222,16 @@
     if (!arrastou) { arrastando = true; clearTimeout(timerAbrir); cancelarContagem(); }
     arrastou = true;
     arraste.x = e.screenX; arraste.y = e.screenY;
-    if (modoTopo) {
-      // encostada no topo: desliza na horizontal; desgruda só com puxada clara para baixo (diagonal conta)
+    if (modoTopo || modoRodape) {
+      // encostada numa borda: desliza na horizontal; desgruda só com puxada clara
+      // para fora da borda — topo pede para baixo, rodapé pede para cima (diagonal conta)
       const tx = e.screenX - arraste.sx, ty = e.screenY - arraste.sy;
-      if (ty < DESGRUDAR_PX || ty < Math.abs(tx) * .6) {
+      const puxada = modoTopo ? ty : -ty;
+      if (puxada < DESGRUDAR_PX || puxada < Math.abs(tx) * .6) {
         if (dx && ponte) ponte.arrastar(Math.round(dx), 0);
         return;
       }
-      aplicarModo(false);
+      aplicarModo('livre');
       if (ponte) ponte.desgrudar();
       nucleo.classList.add('soltando');
       setTimeout(() => nucleo.classList.remove('soltando'), 480);
@@ -812,7 +823,8 @@
     const balao = $('#balao');
     if (!item) { balaoOcupado = false; balao.classList.remove('ativo'); if (!aberta) moverPara(TAM.compacta); return; }
     balaoOcupado = true;
-    $('#balao-origem').textContent = item.origem === 'ollama' ? 'IA' : item.origem === 'voce' ? 'VOCÊ'
+    $('#balao-origem').textContent = item.origem === 'jorge' ? (estado.mente || 'Jorge').toUpperCase()
+      : item.origem === 'ollama' ? 'IA' : item.origem === 'voce' ? 'VOCÊ'
       : item.origem === 'pet' ? (estado.pet || 'Pestinha').toUpperCase() : 'NÚCLEO';
     $('#balao-txt').textContent = item.texto;
     balao.classList.add('ativo');
@@ -854,6 +866,7 @@
     const quadro = $(`.vista[data-vista="${nome}"] iframe`);
     if (quadro && !quadro.hidden) carregarQuadro(quadro);
     if (nome === 'chat' && !modelos.length && ponte) ponte.listar_modelos();
+    if (nome === 'cerebro') cerebro.pedir();       // o mapa da memória atualiza ao abrir a aba
     if (aberta) moverPara(tamanhoAtual());
     setTimeout(redimensionarCanvases, 60);
   }
@@ -891,7 +904,10 @@
       $('#' + barra).style.transform = `scaleX(${lim(pct / 100, 0, 1).toFixed(3)})`;
     });
     const marcado = { pausa: !!estado.pausado, voz: !!estado.voz, travessuras: !!estado.travessuras,
-      avion: !!estado.offline, narrador: narradorLigado, solo: !!estado.solo };
+      avion: !!estado.offline, narrador: narradorLigado, solo: !!estado.solo,
+      mente: !!estado.mente_llm };
+    jorgito.visivel(!!estado.mente);
+    jorgeIlha.visivel(!!estado.mente);
     $$('.chave[data-acao]').forEach(b => b.setAttribute('aria-pressed', String(!!marcado[b.dataset.acao])));
   }
   // efeito lupa: os ícones crescem conforme o cursor se aproxima (a tira é vertical)
@@ -998,6 +1014,261 @@
       }
     }
     return { empurrar, desenhar };
+  })();
+
+  /* ======================= cérebro: a memória dele como grafo ======================= */
+  // Física force-directed (estilo grafo do Obsidian): nós se repelem, arestas puxam
+  // como molas até o comprimento de repouso e uma gravidade fraca segura tudo no centro.
+  // Os dados chegam do Python a cada 2 s (ponte.grafo()); nós já vistos mantêm posição,
+  // memórias novas nascem perto do pet com um pulso. Pet fica fixo no centro (a âncora).
+  const cerebro = (() => {
+    const alvo = $('#cerebro-cv'), caixa = $('#cb-info'), moldura = $('.cerebro');
+    if (!alvo) return { desenhar() {}, pedir() {}, carregar() {} };
+    const ctx = alvo.getContext('2d');
+    const CORES = { pet: '#45e6ff', emocao: '#b07bff', acao: '#4dffb0', contexto: '#45a3ff',
+                    episodio: '#8a90a6', drive: '#ffb547', pista: '#ff6bd6',
+                    voce: '#ff9de2', conta: '#9aa4ff', conceito: '#c9d1e3' };
+    const RAIO = { pet: 20, emocao: 9, acao: 8, contexto: 8, episodio: 3.5, drive: 7, pista: 6,
+                   voce: 12, conta: 6, conceito: 11 };
+    const ENVELHECE_H = 72;     // memória esmaece ao longo de 3 dias — o "esquecimento" visível
+    // ---- física: ajuste aqui ----
+    const REPULSAO = 2600;      // carga entre os nós (maior = mais espalhado)
+    const MOLA_K = .06;         // rigidez das arestas (maior = teia mais dura)
+    const MOLA_L = 74;          // comprimento de repouso da aresta
+    const GRAVIDADE = .012;     // puxão ao centro
+    const AMORT = .82;          // atrito (menor = balança mais antes de assentar)
+    const POLL_MS = 2000;       // consulta o Python a cada 2 s com a aba aberta
+
+    let nos = new Map(), arestas = [], zoom = 1, camX = 0, camY = 0;
+    let arrastando = null, panIni = null, sobre = null, downPos = null;
+    let filtro = new Set(), foco = null, vizinhos = new Set();
+
+    // chips de filtro: nós de outros tipos esmaecem em vez de sumir (a teia não pula de lugar)
+    $$('#cb-filtros [data-f]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      const t = b.dataset.f;
+      if (!t) { filtro.clear(); }
+      else { filtro.has(t) ? filtro.delete(t) : filtro.add(t); }
+      $$('#cb-filtros [data-f]').forEach(x => x.classList.toggle('ligada',
+        x.dataset.f ? filtro.has(x.dataset.f) : !filtro.size));
+    }));
+
+    function visivel(n) { return !filtro.size || filtro.has(n.tipo); }
+    function idadeEp(n) {          // horas desde a memória; episódio velho esmaece
+      const t = Date.parse((n.quando || '').replace(' ', 'T'));
+      return isNaN(t) ? 0 : Math.max(0, (Date.now() - t) / 3.6e6);
+    }
+    function emFoco(n) {
+      if (!foco) return true;
+      return n === foco || vizinhos.has(n.id);
+    }
+
+    function carregar(dados) {
+      // mescla: nós existentes ficam onde estão; novos nascem perto do centro e pulsam
+      const vistos = new Set();
+      for (const d of dados.nos || []) {
+        vistos.add(d.id);
+        let n = nos.get(d.id);
+        if (!n) {
+          const a = Math.random() * Math.PI * 2, r = 24 + Math.random() * 46;
+          n = { id: d.id, x: Math.cos(a) * r, y: Math.sin(a) * r, vx: 0, vy: 0, nasceu: performance.now() };
+          nos.set(d.id, n);
+        }
+        Object.assign(n, d);
+        n.r = (RAIO[n.tipo] || 7) + Math.min(6, n.peso || 0);
+        n.fixo = n.tipo === 'pet';        // ele é a âncora do próprio cérebro
+        if (n.fixo) { n.x = 0; n.y = 0; }
+      }
+      for (const id of [...nos.keys()]) if (!vistos.has(id)) nos.delete(id);   // memória podada some do mapa
+      arestas = (dados.arestas || []).filter(a => nos.has(a.de) && nos.has(a.para));
+    }
+
+    function pedir() { if (ponte) ponte.grafo(s => carregar(JSON.parse(s))); }
+    setInterval(() => { if (vista === 'cerebro' && aberta) pedir(); }, POLL_MS);
+
+    function fisica(dt) {
+      const k = lim(dt * 60, .3, 2), lista = [...nos.values()];
+      // repulsão entre todos os pares — o grafo tem poucas dezenas de nós, o par-a-par é barato
+      for (let i = 0; i < lista.length; i++) for (let j = i + 1; j < lista.length; j++) {
+        const a = lista[i], b = lista[j];
+        let dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
+        if (d2 < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
+        const f = Math.min(REPULSAO / d2, 30) * k, d = Math.sqrt(d2);
+        a.vx -= dx / d * f; a.vy -= dy / d * f; b.vx += dx / d * f; b.vy += dy / d * f;
+      }
+      // molas das arestas: arestas fortes (peso) puxam mais
+      for (const a of arestas) {
+        const n1 = nos.get(a.de), n2 = nos.get(a.para);
+        const dx = n2.x - n1.x, dy = n2.y - n1.y, d = Math.max(1, Math.hypot(dx, dy));
+        const f = (d - MOLA_L) * MOLA_K * (.4 + Math.min(1.6, a.peso || 0)) * k;
+        n1.vx += dx / d * f; n1.vy += dy / d * f; n2.vx -= dx / d * f; n2.vy -= dy / d * f;
+      }
+      const agora = performance.now();
+      for (let i = 0; i < lista.length; i++) {
+        const n = lista[i];
+        if (n.fixo) { n.vx = n.vy = 0; continue; }
+        if (n === arrastando) { n.vx = n.vy = 0; continue; }
+        n.vx += -n.x * GRAVIDADE * k; n.vy += -n.y * GRAVIDADE * k;   // gravidade ao centro
+        // deriva orgânica: cada nó respira numa fase diferente — a teia nunca congela
+        n.vx += Math.sin(agora * .0006 + i * 2.13) * .006 * k;
+        n.vy += Math.cos(agora * .0005 + i * 1.7) * .006 * k;
+        n.x += n.vx * k; n.y += n.vy * k;
+        const fr = Math.pow(AMORT, k); n.vx *= fr; n.vy *= fr;
+      }
+    }
+
+    // tela -> mundo do grafo (desfaz translação de câmera + zoom)
+    function mundo(e) {
+      const r = alvo.getBoundingClientRect();
+      return { x: (e.clientX - r.left - r.width / 2 - camX) / zoom, y: (e.clientY - r.top - r.height / 2 - camY) / zoom };
+    }
+    function noEm(e) {
+      const p = mundo(e);
+      for (const n of [...nos.values()].reverse()) {
+        if (Math.hypot(n.x - p.x, n.y - p.y) <= Math.max(9, n.r + 3)) return n;
+      }
+      return null;
+    }
+
+    const ROTULO_TIPO = { pet: 'ele', emocao: 'emoção', acao: 'ação', contexto: 'quando você',
+                          episodio: 'memória', drive: 'drive', pista: 'pista aprendida',
+                          voce: 'você, para ele', conta: 'convivência', conceito: 'sonho' };
+    function descrever(n) {
+      if (n.tipo === 'pet') return `<b>${n.rotulo}</b> · ${n.extra || ''}<small>o centro de tudo</small>`;
+      if (n.tipo === 'voce') return `<b>você</b><small>quem ele mais observa — ${n.peso || 0} vínculos</small>`;
+      if (n.tipo === 'conta') return `<b>${n.rotulo}</b><small>quantas vezes vocês já viveram isso</small>`;
+      if (n.tipo === 'conceito') return `<b>${n.rotulo}</b><small>ele está dormindo — as memórias se juntaram</small>`;
+      if (n.tipo === 'episodio') {
+        const sinal = n.valencia > 0 ? '+' : '';
+        return `<b>${n.rotulo}</b> → ${n.resultado || '?'}<small>${n.quando || ''} · valência ${sinal}${(+n.valencia || 0).toFixed(2)}</small>`;
+      }
+      if (n.tipo === 'drive') return `<b>${n.rotulo}</b> · ${Math.round((n.valor || 0) * 100)}%<small>como ele está por dentro</small>`;
+      if (n.tipo === 'pista') return `<b>${n.rotulo}</b> · força ${Math.abs(n.forca || 0).toFixed(2)}<small>o que ele aprendeu a esperar de você</small>`;
+      const m = n.peso ? `${n.peso} memória${n.peso > 1 ? 's' : ''}` : 'sem memória ligada ainda';
+      return `<b>${n.rotulo}</b> · ${m}<small>${ROTULO_TIPO[n.tipo] || n.tipo}</small>`;
+    }
+
+    alvo.addEventListener('pointerdown', e => {
+      e.stopPropagation();                       // senão a ilha inteira arrasta junto
+      downPos = { x: e.clientX, y: e.clientY };
+      const n = noEm(e);
+      if (n && !n.fixo) arrastando = n;
+      else panIni = { x: e.clientX, y: e.clientY, camX, camY };
+      alvo.setPointerCapture(e.pointerId);
+      moldura.classList.add('arrastando');
+    });
+    alvo.addEventListener('pointermove', e => {
+      e.stopPropagation();
+      if (arrastando) { const p = mundo(e); arrastando.x = p.x; arrastando.y = p.y; return; }
+      if (panIni) { camX = panIni.camX + e.clientX - panIni.x; camY = panIni.camY + e.clientY - panIni.y; return; }
+      const n = noEm(e);
+      if (n !== sobre) {
+        sobre = n;
+        if (n) { caixa.innerHTML = descrever(n); caixa.hidden = false; }
+        else caixa.hidden = true;
+      }
+      moldura.style.cursor = n ? 'pointer' : 'grab';
+    });
+    alvo.addEventListener('pointerup', e => {
+      e.stopPropagation();
+      // clique quase sem mover = foco no nó: ele e os vizinhos acendem, o resto apaga
+      const mexeu = downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 5;
+      if (!mexeu) {
+        const n = arrastando || noEm(e);
+        if (n) {
+          foco = foco === n ? null : n;
+          vizinhos = new Set();
+          if (foco) for (const a of arestas) {
+            if (a.de === foco.id) vizinhos.add(a.para);
+            if (a.para === foco.id) vizinhos.add(a.de);
+          }
+        } else { foco = null; vizinhos = new Set(); }
+      }
+      arrastando = null; panIni = null; downPos = null; moldura.classList.remove('arrastando');
+    });
+    alvo.addEventListener('dblclick', e => {     // cutucar o cérebro: ele comenta o nó
+      e.stopPropagation();
+      const n = noEm(e);
+      if (n && ponte) ponte.cutucar_no(n.id);
+    });
+    alvo.addEventListener('wheel', e => {
+      e.preventDefault();
+      zoom = lim(zoom * Math.exp(-e.deltaY * .0012), .4, 2.6);
+    }, { passive: false });
+
+    function desenhar(dt) {
+      const w = alvo.clientWidth, h = alvo.clientHeight;
+      if (!w || !h) return;
+      ajustarCanvas(alvo, w, h);
+      fisica(dt || .016);
+      ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      if (!nos.size) {
+        ctx.fillStyle = '#6b7186'; ctx.font = '500 12px "Segoe UI", system-ui, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('o cérebro dele ainda está vazio — converse e interaja com ele', w / 2, h / 2);
+        return;
+      }
+      ctx.save();
+      ctx.translate(w / 2 + camX, h / 2 + camY);
+      ctx.scale(zoom, zoom);
+      ctx.lineCap = 'round';
+      // arestas: verde = lembrança boa, vermelho = ruim, cinza = só vínculo
+      for (const a of arestas) {
+        const n1 = nos.get(a.de), n2 = nos.get(a.para);
+        const v = a.valencia;
+        let alfa = .16 + Math.min(.5, Math.abs(v || a.peso || 0) * .45);
+        if (!visivel(n1) || !visivel(n2)) alfa *= .15;                    // filtro
+        else if (foco && !(n1 === foco || n2 === foco)) alfa *= .12;      // foco apaga o resto
+        ctx.beginPath(); ctx.moveTo(n1.x, n1.y); ctx.lineTo(n2.x, n2.y);
+        ctx.strokeStyle = v == null ? `rgba(255,255,255,${alfa})`
+          : v >= 0 ? `rgba(77,255,176,${alfa})` : `rgba(255,90,110,${alfa})`;
+        ctx.lineWidth = .7 + Math.min(2.6, (a.peso || 0) * 2.2);
+        ctx.stroke();
+      }
+      // nós: anel de nascimento + corpo + rótulo (episódios só mostram rótulo no hover)
+      const agora = performance.now();
+      for (const n of nos.values()) {
+        const cor = CORES[n.tipo] || '#8a90a6';
+        const idade = (agora - n.nasceu) / 900;
+        if (idade < 1) {
+          ctx.beginPath(); ctx.arc(n.x, n.y, n.r + idade * 26, 0, 7);
+          ctx.strokeStyle = cor + Math.round((1 - idade) * 150).toString(16).padStart(2, '0');
+          ctx.lineWidth = 1.5; ctx.stroke();
+        }
+        if (n.tipo === 'pet') {               // ele respira no centro
+          const resp = 1 + Math.sin(agora / 900) * .08;
+          ctx.beginPath(); ctx.arc(n.x, n.y, n.r * resp + 5, 0, 7);
+          ctx.strokeStyle = 'rgba(69,230,255,.35)'; ctx.lineWidth = 1.4; ctx.stroke();
+        }
+        if (n.tipo === 'conceito') {          // sonho: anel tracejado flutuando devagar
+          const f = 1 + Math.sin(agora / 1400) * .12;
+          ctx.beginPath(); ctx.setLineDash([4, 5]); ctx.arc(n.x, n.y, n.r * f + 7, 0, 7);
+          ctx.strokeStyle = 'rgba(201,209,227,.5)'; ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
+        }
+        if (n.agora) {                        // a emoção de agora pulsa no ritmo dele
+          const f = 1 + Math.sin(agora / 500) * .25;
+          ctx.beginPath(); ctx.arc(n.x, n.y, n.r * f + 4, 0, 7);
+          ctx.strokeStyle = cor + '88'; ctx.lineWidth = 1.4; ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 7);
+        ctx.fillStyle = cor;
+        let alfaNo = n.tipo === 'episodio' ? .55 : .92;
+        if (n.tipo === 'episodio') alfaNo *= lim(1 - idadeEp(n) / ENVELHECE_H, .3, 1);   // heat de recência
+        if (!visivel(n)) alfaNo *= .1;
+        else if (!emFoco(n)) alfaNo *= .14;
+        ctx.globalAlpha = alfaNo;
+        ctx.shadowColor = cor; ctx.shadowBlur = n.tipo === 'pet' ? 18 : 9;
+        ctx.fill(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+        if ((n.tipo !== 'episodio' || n === sobre || n === arrastando || n === foco) && visivel(n) && emFoco(n)) {
+          ctx.font = `${n.tipo === 'pet' ? 700 : 500} 10px "Segoe UI", system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillStyle = n === sobre || n === foco ? '#eef1f8' : 'rgba(238,241,248,.78)';
+          ctx.fillText(n.rotulo, n.x, n.y + n.r + 12);
+        }
+      }
+      ctx.restore();
+    }
+    return { desenhar, pedir, carregar };
   })();
 
   /* ======================= som: card mini e estúdio ======================= */
@@ -1239,9 +1510,18 @@
   function enviarMetricas() {
     const e = estado;
     const dados = {
+      // rótulos prontos
       energia: `${e.energia ?? 0}%`, atividade: `${e.atividade ?? 0}%`, estimulo: e.estimulacao ?? 0,
       energia_pct: `${e.energia ?? 0}%`, insatisfacao_pct: `${e.insatisfacao ?? 0}%`, atividade_pct: `${e.atividade ?? 0}%`,
-      estimulo_pct: `${e.estimulacao ?? 0}%`, logs: e.logs || [],
+      estimulo_pct: `${e.estimulacao ?? 0}%`, emocao: e.emocao || '—', pet: e.pet || 'Pestinha',
+      mente: e.mente || '',
+      // números puros (sparklines e barras)
+      energia_n: e.energia ?? 0, atividade_n: e.atividade ?? 0, estimulo_n: e.estimulacao ?? 0,
+      insatisfacao_n: e.insatisfacao ?? 0,
+      // chaves de estado (data-on acende quando verdadeiro)
+      pausado: !!e.pausado, processando: !!e.processando, voz: !!e.voz, travessuras: !!e.travessuras,
+      solo: !!e.solo, mente_llm: !!e.mente_llm, offline: !!e.offline, carinho: !!e.carinho,
+      logs: e.logs || [],
     };
     $$('iframe[data-quadro="parrilla"]').forEach(f => enviar(f, { tipo: 'metricas', dados }));
   }
@@ -1276,8 +1556,11 @@
     bolha('usuario', exibido || texto);
     historico.push({ role: 'user', content: texto });
     historico = historico.slice(-MAX_HISTORICO);
-    bolhaAtual = bolha('assistente', '…'); textoAtual = '';
+    bolhaAtual = bolha('assistente', '…');
+    if (estado.mente) bolhaAtual.dataset.autor = estado.mente;   // a resposta é do Jorge
+    textoAtual = '';
     setOcupado(true);
+    jorgeIlha.acordar(9000);   // você chamou: ele acorda para responder
     ponte.enviar_chat(modelo, JSON.stringify(historico));
   }
 
@@ -1508,26 +1791,168 @@
     const ocioso = !aberta && !balaoOcupado && !respondendo && !pensandoNarrador;
     if (!ocioso || t - ultimoOrbe >= 1000 / 30) {
       orbe.desenhar(humor, lim((t - (ultimoOrbe || t)) / 1000, 0, .1));
+      jorgeIlha.desenhar(t);
       ultimoOrbe = t;
     }
     if (aberta) avatar.copiar();
     if (aberta && vista === 'home') { grafico.desenhar(); desenharSomMini(); }
     if (aberta && vista === 'som') estudio.desenhar(dt);
     if (aberta && vista === 'chat') vibra.desenhar(dt);
+    if (aberta && vista === 'cerebro') cerebro.desenhar(dt);
+    if (aberta && vista === 'chat' && estado.mente) { jorgito.desenhar(t); jorgito.pensando(respondendo || estado.processando); }
     requestAnimationFrame(quadro);
   }
   requestAnimationFrame(quadro);
   aplicarForma();
 
-  /* ======================= ponte com o Python ======================= */
+  /* ======================= a mente (Jorge): mini-mascote do chat ======================= */
+  // Casca dourada + tela escura + olhos dourados + gravata — a aparência do pets/jorge.json
+  // desenhada em 34 px. Pisca devagar parado; pulsa dourado quando a LLM está pensando.
+  const jorgito = (() => {
+    const cv = $('#jorgito'), wrap = $('#jorgito-wrap');
+    if (!cv) return { desenhar() {}, configurar() {} };
+    const ctx = cv.getContext('2d');
+    let nome = 'Jorge';
+    function configurar(dados) {
+      nome = dados.nome || 'Jorge';
+      const b = $('#jorgito-nome'); if (b) b.textContent = nome;
+    }
+    function desenhar(t) {
+      ajustarCanvas(cv, 34, 34);
+      ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+      ctx.clearRect(0, 0, 34, 34);
+      // casca dourada (a moldura dele)
+      ctx.fillStyle = '#e2b13c';
+      ctx.beginPath(); ctx.roundRect(2, 3, 30, 28, 9); ctx.fill();
+      // tela escura
+      ctx.fillStyle = '#1c1a12';
+      ctx.beginPath(); ctx.roundRect(4.5, 5.5, 25, 20, 6); ctx.fill();
+      // olhos dourados com piscada
+      const pisca = (t % 3400) < 160 ? .15 : 1;
+      ctx.fillStyle = '#ffd166';
+      for (const ex of [11.5, 22.5]) {
+        ctx.beginPath(); ctx.ellipse(ex, 14, 3, 3.4 * pisca, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = '#fff3c4'; ctx.fillRect(ex - .8, 12.6, 1.4, 1.4 * pisca);
+        ctx.fillStyle = '#ffd166';
+      }
+      // gravata
+      ctx.fillStyle = '#b3261e';
+      ctx.beginPath(); ctx.moveTo(15, 26.5); ctx.lineTo(19, 26.5); ctx.lineTo(17, 31.5); ctx.closePath(); ctx.fill();
+    }
+    function pensando(v) { wrap.classList.toggle('pensando', v); }
+    function visivel(v) { wrap.hidden = !v; }
+    return { desenhar, configurar, pensando, visivel };
+  })();
+
+  /* ======================= Jorge na pílula: dorme, acorda quando chamado ======================= */
+  // Do outro lado do orbe (Bryan à esquerda, ele à direita). Dorme apagado soltando
+  // "Zzz"; acorda quando a LLM pensa/responde, quando o balão fala em nome dele,
+  // e quando você clica nele — o clique abre o chat, que é onde ele mora.
+  const jorgeIlha = (() => {
+    const cv = $('#jorge-ilha');
+    if (!cv) return { desenhar() {}, acordar() {}, visivel() {} };
+    const ctx = cv.getContext('2d');
+    const W = 40, H = 44;
+    let abertura = 0, acordadoAte = 0, ultimoT = 0;
+    const maoEsq = { x: 5, y: 41 }, maoDir = { x: 35, y: 41 };   // braços: posição atual (interpola p/ o alvo)
+
+    cv.addEventListener('pointerdown', e => e.stopPropagation());
+    cv.addEventListener('click', () => {
+      acordar(6000);
+      abrir(true); mostrarVista('chat');
+      falar('acordei… manda, chefe.', 'jorge', 'calmo');
+    });
+    function acordar(ms) { acordadoAte = performance.now() + (ms || 5000); }
+    function visivel(v) { cv.hidden = !v; }
+
+    function desenhar(t) {
+      const dt = ultimoT ? (t - ultimoT) / 1000 : 0; ultimoT = t;
+      const alvo = (respondendo || estado.processando || pensandoNarrador || t < acordadoAte) ? 1 : 0;
+      abertura += (alvo - abertura) * Math.min(1, dt * 5);   // pálpebra: abre rápido, fecha devagar
+      cv.classList.toggle('acordado', abertura > .6);
+
+      ajustarCanvas(cv, W, H);
+      ctx.setTransform(DPR(), 0, 0, DPR(), 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      const bob = Math.sin(t / 1400) * 1.1 * (1 - abertura * .6);  // respiração do sono
+      ctx.save(); ctx.translate(0, bob);
+
+      /* braços mecânicos (mesma leitura do mascote: membro atrás da casca, mão por cima).
+         Dormindo caem largados; acordado balançam de leve; respondendo gesticula explicando. */
+      const tm = t / 1000, falando = respondendo || estado.processando;
+      const alvoEsq = {}, alvoDir = {};
+      if (falando && abertura > .5) {
+        alvoEsq.x = 6 - Math.abs(Math.sin(tm * 2.3)) * 2.5; alvoEsq.y = 21 + Math.sin(tm * 5.1) * 4.5;
+        alvoDir.x = 34 + Math.abs(Math.cos(tm * 1.9)) * 2.5; alvoDir.y = 19 + Math.cos(tm * 4.3) * 4.5;
+      } else {
+        const caido = 1 - abertura;                                  // 1 = sono profundo, 0 = em pé
+        alvoEsq.x = 5 + Math.sin(tm * 1.1) * (0.5 + abertura);       alvoEsq.y = 41 - abertura * 8 + Math.sin(tm * 1.7) * 1.2;
+        alvoDir.x = 35 + Math.sin(tm * 1.1 + 1) * (0.5 + abertura);  alvoDir.y = 41 - abertura * 8 + Math.sin(tm * 1.7 + 2) * 1.2;
+        alvoEsq.y += caido * bob * .6; alvoDir.y += caido * bob * .6;
+      }
+      const k = Math.min(1, dt * 7);
+      maoEsq.x += (alvoEsq.x - maoEsq.x) * k; maoEsq.y += (alvoEsq.y - maoEsq.y) * k;
+      maoDir.x += (alvoDir.x - maoDir.x) * k; maoDir.y += (alvoDir.y - maoDir.y) * k;
+      ctx.lineCap = 'round';
+      for (const [ombroX, mao] of [[7, maoEsq], [33, maoDir]]) {
+        const ex = (ombroX + mao.x) / 2 + (ombroX < 20 ? -2.5 : 2.5), ey = (23 + mao.y) / 2 - 2;
+        ctx.strokeStyle = '#e2b13c'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(ombroX, 23); ctx.quadraticCurveTo(ex, ey, mao.x, mao.y); ctx.stroke();
+        ctx.strokeStyle = '#1e222b'; ctx.lineWidth = 2.3;
+        ctx.beginPath(); ctx.moveTo(ombroX, 23); ctx.quadraticCurveTo(ex, ey, mao.x, mao.y); ctx.stroke();
+      }
+      // casca dourada + tela escura (a cara do pets/jorge.json)
+      ctx.fillStyle = '#e2b13c';
+      ctx.beginPath(); ctx.roundRect(4, 6, 32, 33, 10); ctx.fill();
+      ctx.fillStyle = '#1c1a12';
+      ctx.beginPath(); ctx.roundRect(7, 9, 26, 24, 7); ctx.fill();
+      // olhos: arcos fechados dormindo → elipses douradas acordado
+      const ab = Math.max(0, Math.min(1, abertura));
+      const pisca = ab > .9 && (t % 3400) < 160 ? .15 : 1;
+      if (ab < .25) {
+        ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+        for (const ex of [14.5, 25.5]) {
+          ctx.beginPath(); ctx.arc(ex, 20, 3.1, .15 * Math.PI, .85 * Math.PI); ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = '#ffd166';
+        for (const ex of [14.5, 25.5]) {
+          ctx.beginPath(); ctx.ellipse(ex, 19, 2.9, 3.2 * ab * pisca, 0, 0, 7); ctx.fill();
+          if (ab * pisca > .5) { ctx.fillStyle = '#fff3c4'; ctx.fillRect(ex - .7, 17.6, 1.3, 1.3); ctx.fillStyle = '#ffd166'; }
+        }
+      }
+      // gravata
+      ctx.fillStyle = '#b3261e';
+      ctx.beginPath(); ctx.moveTo(18, 34.5); ctx.lineTo(22, 34.5); ctx.lineTo(20, 39.5); ctx.closePath(); ctx.fill();
+      // mãos por cima do rosto — luvas escuras com contorno dourado
+      for (const mao of [maoEsq, maoDir]) {
+        ctx.fillStyle = '#1e222b'; ctx.strokeStyle = '#e2b13c'; ctx.lineWidth = 1.3;
+        ctx.beginPath(); ctx.arc(mao.x, mao.y, 3.1, 0, 7); ctx.fill(); ctx.stroke();
+      }
+      ctx.restore();
+      // "Zzz" subindo enquanto ele dorme
+      if (abertura < .35) {
+        const alfa = 1 - abertura / .35;
+        ctx.fillStyle = 'rgba(255, 209, 102, ' + (.8 * alfa) + ')';
+        ctx.font = '700 8px system-ui'; ctx.textAlign = 'center';
+        for (let i = 0; i < 3; i++) {
+          const p = ((t / 1800) + i / 3) % 1;
+          ctx.globalAlpha = alfa * Math.sin(p * Math.PI);
+          ctx.fillText('z', 33 - p * 7, 14 - p * 11);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+    return { desenhar, acordar, visivel };
+  })();
   if (window.QWebChannel && window.qt) {
     new QWebChannel(qt.webChannelTransport, canal => {
       ponte = canal.objects.ponte;
-      ponte.modo_inicial(m => aplicarModo(m !== 'livre'));
-      ponte.modo_mudou.connect(m => aplicarModo(m !== 'livre'));
+      ponte.modo_inicial(m => aplicarModo(m));
+      ponte.modo_mudou.connect(m => aplicarModo(m));
       ponte.aparencia_pet(s => mascote.configurar(JSON.parse(s)));
       ponte.estado.connect(s => aplicarEstado(JSON.parse(s)));
-      ponte.aviso.connect(s => { const a = JSON.parse(s); falar(a.texto, a.origem, a.tom); });
+      ponte.aviso.connect(s => { const a = JSON.parse(s); falar(a.texto, a.origem, a.tom); if (a.origem === 'jorge') jorgeIlha.acordar(4000); });
       ponte.narrador_estado.connect(s => { pensandoNarrador = s === 'pensando'; });
       ponte.niveis.connect(s => aoReceberNiveis(JSON.parse(s)));
       ponte.audio_estado.connect(aoEstadoAudio);
@@ -1544,6 +1969,7 @@
       ponte.solo_livre.connect(v => mascote.definirFora(estado.solo && v));  // saiu/voltou na hora
       ponte.voz_download.connect(p => { $('#voz-progresso').textContent = p + '%'; });
       ponte.obter_estado(s => aplicarEstado(JSON.parse(s)));
+      ponte.mente_dados(s => jorgito.configurar(JSON.parse(s)));
       ponte.listar_modelos();
       ponte.carregar('reacoes', t => reacoes.carregar(t));
       informarRegiao(mola.w, mola.h);
@@ -1552,5 +1978,5 @@
   }
 
   mostrarFluxo('reacoes');
-  window.nucleoDebug = { abrir, mostrarVista, falar, niveis: aoReceberNiveis, audio: aoEstadoAudio, modelos: aoModelos, agendar: agendarRecolher, controles: atualizarControles, marcar: () => $("#estudio").dispatchEvent(new MouseEvent("click")) };   // testes e capturas
+  window.nucleoDebug = { abrir, mostrarVista, falar, niveis: aoReceberNiveis, audio: aoEstadoAudio, modelos: aoModelos, agendar: agendarRecolher, controles: atualizarControles, marcar: () => $("#estudio").dispatchEvent(new MouseEvent("click")), cerebro, jorgeIlha };   // testes e capturas
 })();

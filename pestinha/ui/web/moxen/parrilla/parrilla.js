@@ -103,13 +103,55 @@
     } },
     alertas: { nombre: 'Logs recentes', etiqueta: 'últimos', min: [3, 2], html: () =>
       '<ul class="pa-al" data-live="logs"><li><i style="--c:#45e6ff"></i>Aguardando eventos…<em></em></li></ul>' },
+    /* ── os novos do Pestinha ─────────────────────────────────────────── */
+    relogio: { nombre: 'Relógio', etiqueta: 'agora', min: [2, 2], html: () =>
+      '<div class="pa-r"><p class="pa-r-h"><b data-relogio>--:--</b><small data-relseg>:--</small></p>' +
+      '<p class="pa-r-d" data-reldata>—</p>' +
+      '<div class="pa-r-extra"><span data-live="emocao">—</span><i></i><b data-live="energia_pct">--</b> energia</div></div>' },
+    emocao: { nombre: 'Humor dele', etiqueta: 'pet', min: [2, 2], html: () =>
+      '<div class="pa-e"><p class="pa-e-grande" data-live="emocao">—</p>' +
+      '<p class="pa-e-sub"><b data-live="pet">Pestinha</b> · energia <b data-live="energia_pct">--</b></p>' +
+      '<div class="pa-e-chips"><i data-on="pausado">pausado</i><i data-on="processando">pensando</i><i data-on="carinho">carinho</i><i data-on="mente_llm" class="ou">jorge</i></div></div>' },
+    acoes: { nombre: 'Ações rápidas', etiqueta: 'funções', min: [3, 2], html: () =>
+      '<div class="pa-f" role="group" aria-label="Funções do Pestinha">' +
+        '<button type="button" data-acao="pausa" data-on="pausado"><svg viewBox="0 0 16 16"><path d="M5 3v10M11 3v10"/></svg>Pausar</button>' +
+        '<button type="button" data-acao="voz" data-on="voz"><svg viewBox="0 0 16 16"><path d="M8 2v8M5 7a3 3 0 0 0 6 0M3 10c0 3 2 5 5 5s5-2 5-5"/></svg>Voz</button>' +
+        '<button type="button" data-acao="solo" data-on="solo"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4"/></svg>Um persona</button>' +
+        '<button type="button" data-acao="mente" data-on="mente_llm"><svg viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="8" rx="2"/><path d="M6 13h4"/></svg>Jorge</button>' +
+        '<button type="button" data-acao="travessuras" data-on="travessuras"><svg viewBox="0 0 16 16"><path d="M3 13c2-8 8-8 10-3-3 0-3 3-6 3s-4-1-4 0z"/></svg>Travessuras</button>' +
+        '<button type="button" data-acao="avion" data-on="offline"><svg viewBox="0 0 16 16"><path d="M3 8h10M8 3v10" transform="rotate(45 8 8)"/></svg>Modo avião</button>' +
+      '</div>' },
+    nota: { nombre: 'Nota', etiqueta: 'editável', min: [2, 2], html: it =>
+      '<div class="pa-t"><i class="pa-t-pin" aria-hidden="true"></i>' +
+      '<div class="pa-t-txt" contenteditable="true" spellcheck="false" data-nota role="textbox" aria-label="Nota">' + escapa((it && it.nota) || '') + '</div>' +
+      '<span class="pa-t-dica">duplo clique e escreva — salva junto com a disposição</span></div>' },
+    pulso: { nombre: 'Pulso', etiqueta: 'ao vivo', min: [3, 2], html: () =>
+      '<div class="pa-s"><p class="pa-s-v"><b data-live="energia_pct">--</b><span>energia agora</span></p>' +
+      '<div class="pa-s-g"><svg viewBox="0 0 240 70" preserveAspectRatio="none" aria-hidden="true">' +
+      '<path class="pa-s-area" data-spark-area="energia" d=""/><path class="pa-s-linha" data-spark="energia" d=""/>' +
+      '<path class="pa-s-linha pa-s-2" data-spark="atividade" d=""/></svg></div>' +
+      '<div class="pa-s-leg"><i></i>energia<i class="a2"></i>atividade neural</div></div>' },
   };
   const PALETA_ICONOS = {
     linea: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M3 22l7-8 6 5 8-11 9 6"/></svg>',
     pedidos: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M6 25V16M14 25V9M22 25V13M30 25V5"/></svg>',
     alertas: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M18 4a8 8 0 0 0-8 8v6l-3 4h22l-3-4v-6a8 8 0 0 0-8-8zM15 26h6"/></svg>',
+    anillo: '<svg viewBox="0 0 36 30" aria-hidden="true"><circle cx="18" cy="15" r="10"/><circle cx="18" cy="15" r="4"/></svg>',
+    barras: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M5 25V12M12 25V6M19 25v-9M26 25V9M33 25V15"/></svg>',
+    calor: '<svg viewBox="0 0 36 30" aria-hidden="true"><rect x="4" y="6" width="6" height="6" rx="1.5"/><rect x="12" y="6" width="6" height="6" rx="1.5"/><rect x="20" y="6" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="12" y="14" width="6" height="6" rx="1.5"/><rect x="20" y="14" width="6" height="6" rx="1.5"/></svg>',
+    lista: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M4 8l2.5 2.5L11 6M4 16l2.5 2.5L11 14M4 24l2.5 2.5L11 22M15 8h17M15 16h17M15 24h17"/></svg>',
+    cifra: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M6 24h24M8 20l6-7 4 4 8-10"/></svg>',
+    relogio: '<svg viewBox="0 0 36 30" aria-hidden="true"><circle cx="18" cy="15" r="11"/><path d="M18 9v6l4 3"/></svg>',
+    emocao: '<svg viewBox="0 0 36 30" aria-hidden="true"><circle cx="18" cy="15" r="11"/><path d="M13 13h.01M23 13h.01M12 19c2 2 4 3 6 3s4-1 6-3"/></svg>',
+    acoes: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M18 5v5M9.5 9.5l3.5 3.5M26.5 9.5L23 13M18 25v-6"/></svg>',
+    nota: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M8 4h20v18l-6 6H8zM22 22v6h6z"/></svg>',
+    pulso: '<svg viewBox="0 0 36 30" aria-hidden="true"><path d="M3 15h7l3-8 5 16 4-10 3 2h8"/></svg>',
   };
-  const TAM_PALETA = { linea: [6, 3], pedidos: [3, 2], alertas: [4, 3] };
+  const TAM_PALETA = {
+    linea: [6, 3], pedidos: [3, 2], alertas: [4, 3], anillo: [3, 3],
+    barras: [4, 2], calor: [4, 3], lista: [4, 3], cifra: [4, 3],
+    relogio: [3, 2], emocao: [3, 2], acoes: [4, 2], nota: [3, 2], pulso: [5, 2],
+  };
   const INICIAL = [
     { id: 'energia', tipo: 'pedidos', x: 0, y: 0, w: 4, h: 2 },
     { id: 'atividade', tipo: 'linea', x: 4, y: 0, w: 5, h: 2 },
@@ -144,7 +186,9 @@
      El componente
      ===================================================================== */
   function Parrilla(raiz, opciones) {
-    const o = Object.assign({ columnas: 12, alto: 52, hueco: 10, filas: 8, widgets: INICIAL, paleta: ['linea', 'pedidos', 'alertas'], alGuardar: null, alCambiar: null }, opciones);
+    const o = Object.assign({ columnas: 12, alto: 52, hueco: 10, filas: 8, widgets: INICIAL,
+      paleta: ['relogio', 'emocao', 'pulso', 'acoes', 'nota', 'anillo', 'barras', 'calor', 'lista', 'cifra', 'linea', 'pedidos', 'alertas'],
+      alGuardar: null, alCambiar: null }, opciones);
     const $ = s => raiz.querySelector(s);
     const caja = $('[data-caja]'), vacio = $('[data-vacio]'), cont = $('[data-widgets]'), rejilla = $('[data-rejilla]'), encaje = $('[data-encaje]'), paletaEl = $('[data-paleta]'),
       codigo = $('[data-codigo]'), datosOk = $('[data-datos-ok]'), btnGuardar = $('[data-guardar]'), btnRestaurar = $('[data-restaurar]'),
@@ -234,10 +278,12 @@
         '<header class="pa-cab"><button class="pa-grip" type="button" aria-label="Mover ' + escapa(t.nombre) + ' (setas)"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.4"/><circle cx="11" cy="4" r="1.4"/><circle cx="5" cy="8" r="1.4"/><circle cx="11" cy="8" r="1.4"/><circle cx="5" cy="12" r="1.4"/><circle cx="11" cy="12" r="1.4"/></svg></button>' +
           '<h3>' + escapa(t.nombre) + '</h3>' + (t.etiqueta ? '<span class="pa-etiq">' + escapa(t.etiqueta) + '</span>' : '') +
           '<button class="pa-x" type="button" aria-label="Quitar ' + escapa(t.nombre) + '"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></header>' +
-        '<div class="pa-cuerpo-w">' + t.html() + '</div>' +
+        '<div class="pa-cuerpo-w">' + t.html(it) + '</div>' +
         '<button class="pa-tirador" type="button" aria-label="Mudar o tamanho de ' + escapa(t.nombre) + ' (setas)"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M10 4L4 10M10 8l-2 2"/></svg></button>';
       if (it.tipo === 'calor') preparaCalor(el);
       if (it.tipo === 'lista') preparaLista(el);
+      if (it.tipo === 'nota') preparaNota(el, it);
+      if (it.tipo === 'acoes') preparaAcoes(el);
       const cab = el.querySelector('.pa-cab'), tir = el.querySelector('.pa-tirador'), grip = el.querySelector('.pa-grip'), x = el.querySelector('.pa-x');
       const actual = () => S.items.find(i => i.id === it.id);
       cab.addEventListener('pointerdown', ev => { if (ev.target.closest('.pa-x') || (ev.pointerType === 'mouse' && ev.button !== 0)) return; empiezaMover(actual(), el, ev); });
@@ -274,6 +320,25 @@
       const alterna = f => { f.classList.toggle('is-hecha'); f.setAttribute('aria-checked', String(f.classList.contains('is-hecha'))); pinta(); };
       filas.forEach(f => { f.addEventListener('click', () => alterna(f)); f.addEventListener('keydown', ev => { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); alterna(f); } }); });
       pinta();
+    }
+    // a nota: texto editável que viaja dentro do item — salva junto com a disposição
+    function preparaNota(el, it) {
+      const txt = el.querySelector('[data-nota]');
+      if (!txt) return;
+      txt.addEventListener('pointerdown', ev => ev.stopPropagation());       // editar não arrasta o widget
+      let espera = 0;
+      txt.addEventListener('input', () => {
+        it.nota = txt.textContent.slice(0, 4000);
+        clearTimeout(espera);
+        espera = luego(() => cambio(), 500);                                 // salva depois de parar de digitar
+      });
+      el.querySelector('.pa-t').addEventListener('dblclick', () => txt.focus());
+    }
+    // as ações rápidas: cada botão manda a ação ao pai (ponte.acao) e acende com data-on
+    function preparaAcoes(el) {
+      el.querySelectorAll('[data-acao]').forEach(b => {
+        b.addEventListener('click', () => parent.postMessage({ tipo: 'acao', nome: b.dataset.acao, valor: true }, '*'));
+      });
     }
 
     /* ── arrastrar un widget por su cabecera ───────────────────────────── */

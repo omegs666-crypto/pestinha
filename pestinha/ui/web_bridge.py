@@ -238,6 +238,179 @@ class Ponte(QObject):
         if fn:
             fn()
 
+    # ----- aba Cérebro: a memória dele como grafo (estilo Obsidian) -----
+
+    # rótulos amigáveis das pistas do condicionamento; quantos episódios recentes entram no grafo
+    ROTULOS_PISTA = {"PRESS": "pressão no corpo", "APPROACH": "você por perto", "PLACA": "placa do castigo"}
+    EPISODIOS_NO_GRAFO = 14
+
+    @Slot(result=str)
+    def grafo(self):
+        """Mapa da memória do pet (nós + arestas em JSON) — o "cérebro" visível na aba Cérebro."""
+        try:
+            dados = self._grafo_memoria()
+        except Exception as error:            # memória corrompida não derruba a ilha
+            log_module.log(f"[ilha-web] grafo indisponível: {error}")
+            dados = {"nos": [], "arestas": []}
+        return json.dumps(dados, ensure_ascii=False)
+
+    def _grafo_memoria(self):
+        """Junta episódios, aprendizado por contexto, pistas e drives num grafo só.
+
+        Nós: pet (centro), emocao, acao, contexto (atividade), episodio, drive e pista.
+        Arestas: episódio→o que envolveu; contexto→ação com a valência aprendida; pistas e drives→pet.
+        """
+        app = self.app
+        memoria = getattr(app, "memory", None)
+        drives = getattr(app, "drives", None)
+        condicionamento = getattr(app, "conditioning", None)
+        estado = getattr(app, "pet_state", None)
+        nome = str(getattr(app, "nome", "Pestinha"))[:40]
+        emocao = str(getattr(estado, "emotion", "observando") or "observando")[:40]
+
+        nos, arestas, idx = [], [], {}
+
+        def no(id_, tipo, rotulo, **extra):
+            """Cria o nó uma vez; chamadas seguintes só acumulam peso/extras."""
+            existente = idx.get(id_)
+            if existente is not None:
+                existente["peso"] = existente.get("peso", 0) + extra.pop("peso", 0)
+                existente.update(extra)
+                return existente
+            n = {"id": id_, "tipo": tipo, "rotulo": rotulo}
+            n.update(extra)
+            idx[id_] = n
+            nos.append(n)
+            return n
+
+        def aresta(de, para, **extra):
+            arestas.append({"de": de, "para": para, **extra})
+
+        # centro: o pet e como ele está agora
+        no("pet", "pet", nome, extra=emocao)
+        if drives is not None:
+            for chave, rotulo in (("energy", "energia"), ("stimulation", "estímulo"), ("contact", "carinho")):
+                valor = _percentual(getattr(drives, chave, 0.0)) / 100
+                no(f"drive:{chave}", "drive", rotulo, valor=round(valor, 2))
+                aresta("pet", f"drive:{chave}", peso=round(valor, 2))
+        no(f"emo:{emocao}", "emocao", emocao, peso=1, agora=True)
+        aresta("pet", f"emo:{emocao}", peso=1.0)
+
+        # memória episódica: cada lembrança liga ação + emoção + atividade daquele momento;
+        # dormindo, elas se fundem em conceitos por emoção — ele "sonha organizando"
+        if memoria is not None:
+            episodios = list(getattr(memoria, "recent", []))[-self.EPISODIOS_NO_GRAFO:]
+            if getattr(app, "asleep", False) and episodios:
+                grupos = {}
+                for ep in episodios:
+                    _, _, emo_ep = str(ep.get("contexto", "")).partition("|")
+                    grupos.setdefault(emo_ep or "calmo", []).append(str(ep.get("acao", "?"))[:24])
+                for emo_ep, acoes in grupos.items():
+                    cid = f"sonho:{emo_ep}"
+                    no(cid, "conceito", f"{len(acoes)} lembranças {emo_ep}", peso=len(acoes), sonho=True)
+                    no(f"emo:{emo_ep}", "emocao", emo_ep, peso=1)
+                    aresta(cid, f"emo:{emo_ep}", peso=1.0)
+                    for acao in sorted(set(acoes)):
+                        no(f"acao:{acao}", "acao", acao, peso=1)
+                        aresta(cid, f"acao:{acao}", peso=0.5)
+            else:
+                for ep in episodios:
+                    ctx = str(ep.get("contexto", ""))
+                    atividade, _, emo_ep = ctx.partition("|")
+                    acao = str(ep.get("acao", "?"))[:24]
+                    ep_id = f"ep:{ep.get('id') or ep.get('quando', '?')}"
+                    no(ep_id, "episodio", acao, quando=str(ep.get("quando", ""))[:19],
+                       resultado=str(ep.get("resultado", ""))[:40], valencia=float(ep.get("valencia", 0.0)))
+                    no(f"acao:{acao}", "acao", acao, peso=1)
+                    aresta(ep_id, f"acao:{acao}", peso=abs(float(ep.get("valencia", 0.0))), valencia=float(ep.get("valencia", 0.0)))
+                    if emo_ep:
+                        no(f"emo:{emo_ep}", "emocao", emo_ep, peso=1)
+                        aresta(ep_id, f"emo:{emo_ep}", peso=0.6)
+                    if atividade:
+                        no(f"ctx:{atividade}", "contexto", atividade.lower(), peso=1)
+                        aresta(ep_id, f"ctx:{atividade}", peso=0.5)
+
+            # o que ele aprendeu por contexto: a força da linha é a valência média da ação ali
+            for ctx, acoes in (getattr(memoria, "table", None) or {}).items():
+                if not isinstance(acoes, dict):
+                    continue
+                atividade, _, emo_ctx = str(ctx).partition("|")
+                if atividade:
+                    no(f"ctx:{atividade}", "contexto", atividade.lower(), peso=0)
+                for acao, stats in acoes.items():
+                    if not isinstance(stats, (list, tuple)) or len(stats) < 2 or not stats[0]:
+                        continue
+                    no(f"acao:{acao}", "acao", acao, peso=0)
+                    if atividade:
+                        aresta(f"ctx:{atividade}", f"acao:{acao}", peso=abs(float(stats[1])), valencia=float(stats[1]))
+                    if emo_ctx:
+                        aresta(f"emo:{emo_ctx}", f"acao:{acao}", peso=0.3)
+
+        # pistas do condicionamento: o que ele aprendeu a esperar de você
+        for pista, forca in (getattr(condicionamento, "V", None) or {}).items():
+            no(f"pista:{pista}", "pista", self.ROTULOS_PISTA.get(pista, str(pista).lower()), forca=round(float(forca), 2))
+            aresta("pet", f"pista:{pista}", peso=abs(float(forca)), valencia=float(forca))
+
+        # você: o que ele lembra da convivência — as interações mais vividas penduradas em você
+        conv = getattr(app, "convivencia", None)
+        if conv is not None:
+            no("voce", "voce", "você")
+            aresta("pet", "voce", peso=1.4)
+            for evento, qtd in sorted((getattr(conv, "contagens", None) or {}).items(),
+                                      key=lambda kv: -kv[1])[:5]:
+                no(f"conta:{evento}", "conta", f"{evento} ×{int(qtd)}", peso=1)
+                aresta("voce", f"conta:{evento}", peso=min(1.5, qtd / 20))
+            # os pontos são lembranças das suas interações: frases que ele aprendeu
+            # ligadas a você, com a valência do que ele sentiu — enche o cérebro
+            # mesmo antes das primeiras travessuras (episodes.jsonl)
+            for i, (frase, pontos) in enumerate(sorted((getattr(conv, "pontos", None) or {}).items(),
+                                                     key=lambda kv: -abs(kv[1]))[:12]):
+                val = max(-1.0, min(1.0, float(pontos) / 5))
+                no(f"ponto:{i}", "episodio", frase[:34], quando="", resultado="convivência",
+                   valencia=val)
+                aresta(f"ponto:{i}", "voce", peso=abs(val), valencia=val)
+
+        return {"pet": nome, "emocao": emocao, "dormindo": bool(getattr(app, "asleep", False)),
+                "nos": nos, "arestas": arestas}
+
+    # frases dele quando você cutuca um pedaço do próprio cérebro
+    def _fala_do_no(self, n):
+        tipo, rotulo = n.get("tipo", ""), n.get("rotulo", "?")
+        if tipo == "pet":
+            return "sou eu! o centro de tudo isso aqui."
+        if tipo == "voce":
+            return "você! a parte favorita do meu mapa."
+        if tipo == "episodio":
+            sinal = "deu certo" if (n.get("valencia") or 0) > 0 else "deu ruim"
+            return f"aquela vez que eu fiz '{rotulo}'… {sinal} ({n.get('resultado', '')})."
+        if tipo == "emocao":
+            return f"'{rotulo}'… quando eu tô assim, é por isso que as coisas ligam desse jeito."
+        if tipo == "acao":
+            return f"'{rotulo}' — eu lembro de todas as vezes que tentei isso."
+        if tipo == "contexto":
+            return f"quando você tá em '{rotulo}', eu já sei mais ou menos o que esperar."
+        if tipo == "drive":
+            return f"minha {rotulo} tá em {round((n.get('valor') or 0) * 100)}% agora."
+        if tipo == "pista":
+            return f"aprendi que '{rotulo}' quer dizer alguma coisa… tô sempre de olho."
+        if tipo == "conta":
+            return f"'{rotulo}' — a gente já viveu bastante isso juntos."
+        if tipo == "conceito":
+            return "shhh… tô sonhando com isso agora. as lembranças tão se juntando."
+        return f"'{rotulo}'."
+
+    @Slot(str)
+    def cutucar_no(self, no_id):
+        """Você cutucou um nó do cérebro dele: ele comenta o que aquele pedaço significa."""
+        try:
+            dados = self._grafo_memoria()
+        except Exception:
+            return
+        alvo = next((n for n in dados.get("nos", []) if n.get("id") == no_id), None)
+        if alvo:
+            self.aviso.emit(json.dumps({"texto": self._fala_do_no(alvo)[:160], "tom": "calmo",
+                                        "origem": "pet"}, ensure_ascii=False))
+
     @Slot(int, int, int, int)
     def definir_regiao(self, x, y, largura, altura):
         def lim(v):
@@ -280,7 +453,9 @@ class Ponte(QObject):
         self.narrador_estado.emit("pronto")
         if texto:
             self._falhou_insight = False
-            self.aviso.emit(json.dumps({"texto": texto, "tom": "insight", "origem": "ollama"}, ensure_ascii=False))
+            # com a mente ligada, o insight é do Jorge; desligada, é a IA genérica
+            origem = "jorge" if self.app.perms.get("mente_llm", True) else "ollama"
+            self.aviso.emit(json.dumps({"texto": texto, "tom": "insight", "origem": origem}, ensure_ascii=False))
 
     def _insight_erro(self, mensagem):
         self._pedindo_insight = False
@@ -314,6 +489,9 @@ class Ponte(QObject):
             "carinho": bool(getattr(estado, "feliz_fechado", lambda *a: False)()) if estado else False,
             "solo": bool(self.app.perms.get("ilha_solo")),
             "solo_livre": bool(getattr(self.app, "_solo_livre", False)),
+            "mente": str((getattr(self.app, "mente", None) or {}).get("nome") or "")[:40]
+                     if self.app.perms.get("mente_llm", True) else "",
+            "mente_llm": bool(self.app.perms.get("mente_llm", True)),
             "pausado": bool(getattr(self.app, "paused", False)),
             "voz": bool(self.app.perms.get("voz")),
             "travessuras": bool(self.app.perms.get("travessuras")),
@@ -344,6 +522,13 @@ class Ponte(QObject):
     def obter_estado(self):
         return json.dumps(self.snapshot(), ensure_ascii=False)
 
+    @Slot(result=str)
+    def mente_dados(self):
+        """Nome + aparência da mente (Jorge), para o mini-mascote e o rótulo no chat."""
+        mente = getattr(self.app, "mente", None) or {}
+        return json.dumps({"nome": str(mente.get("nome") or "Jorge")[:40],
+                           "aparencia": mente.get("aparencia") or {}}, ensure_ascii=False)
+
     # ----- ações permitidas -----
     @Slot(str, bool)
     def acao(self, nome, valor):
@@ -358,6 +543,8 @@ class Ponte(QObject):
             self.app.apply_perms({"travessuras": not self.app.perms.get("travessuras")})
         elif nome == "solo":
             self.app.apply_perms({"ilha_solo": not self.app.perms.get("ilha_solo")})
+        elif nome == "mente":
+            self.app.apply_perms({"mente_llm": not self.app.perms.get("mente_llm", True)})
         elif nome == "avion":
             self.offline = bool(valor)
             if self.offline:
@@ -419,7 +606,20 @@ class Ponte(QObject):
             self.erro.emit("Mensagem inválida.")
             self.chat_fim.emit()
             return
-        self._ollama.chat_stream_async(modelo, lista if isinstance(lista, list) else [])
+        if not isinstance(lista, list):
+            lista = []
+        # a mente responde: system com a persona dela entra aqui, no servidor —
+        # o JS não precisa saber da persona e nunca a duplica
+        mente = getattr(self.app, "mente", None) or {}
+        if self.app.perms.get("mente_llm", True) and mente:
+            nome = str(mente.get("nome") or "Jorge")[:40]
+            persona = str(mente.get("persona") or "")[:800]
+            sistema = {"role": "system", "content":
+                       f"Você é {nome}, a mente do Pestinha — o lado que pensa e explica. "
+                       f"{persona} Responda em português do Brasil."}
+            lista = [sistema] + [m for m in lista
+                                 if not (isinstance(m, dict) and m.get("role") == "system")]
+        self._ollama.chat_stream_async(modelo, lista)
 
     @Slot()
     def cancelar_chat(self):
