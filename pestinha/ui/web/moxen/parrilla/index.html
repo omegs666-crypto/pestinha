@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Painel em grade</title>
 <!-- una hoja por familia -->
-<link rel="stylesheet" href="parrilla.css">
+<link rel="stylesheet" href="parrilla.css?v=2026-11-18a">
 <!-- ?tema=claro (gris y blanco) es el de siempre; ?tema=oscuro es el mismo panel sobre grafito azulado -->
 <script>if (/[?&]tema=claro/.test(location.search)) document.documentElement.dataset.tema = 'claro'; else if (/[?&]tema=oscuro/.test(location.search)) document.documentElement.dataset.tema = 'oscuro';</script>
 </head>
@@ -76,7 +76,7 @@
     <p class="pa-oculto" role="status" aria-live="polite" data-vivo></p>
   </main>
 
-  <script src="parrilla.js"></script>
+  <script src="parrilla.js?v=2026-11-18a"></script>
   <script>
   // relógio: um tick para todos os widgets de hora (texto + segundos menores ao lado)
   const hist = { energia: [], atividade: [] };

@@ -16,3 +16,7 @@ Pior que o spam: `adaptaColumnas(4)` **compactava a disposição** como se a tel
 ## Verificação
 
 `node --check` OK. O spam de console some na próxima abertura da Grade (o iframe recarrega o script a cada visita à aba).
+
+## Errata — a causa da persistência do erro
+
+O spam continuou depois do fix porque **`parrilla.js`/`parrilla.css` e `eslabon.js`/`eslabon.css` carregavam sem `?v=`** — o cache em disco do WebEngine servia a versão antiga mesmo com app reiniciado. Agora os quatro assets dos iframes têm `?v=2026-11-18a`, mesma política de cache-buster do `ilha.js`/`ilha.css`.
