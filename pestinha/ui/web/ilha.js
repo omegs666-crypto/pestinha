@@ -308,19 +308,23 @@
     return [hslParaRgb(h, 95, 62), hslParaRgb((h + 55) % 360, 90, 60)];
   }
 
+  const ultimoCss = { a1: '', a2: '', giro: '' };
   function atualizarCores() {
     const humor = humorAtual();
-    nucleo.dataset.humor = humor;
+    if (nucleo.dataset.humor !== humor) nucleo.dataset.humor = humor;
     const [b1, b2] = alvoDeCor(humor);
     for (let i = 0; i < 3; i++) {
       cor.a1[i] += (b1[i] - cor.a1[i]) * .06;
       cor.a2[i] += (b2[i] - cor.a2[i]) * .06;
     }
     const css = c => `rgb(${c.map(Math.round).join(',')})`;
-    document.documentElement.style.setProperty('--a1', css(cor.a1));
-    document.documentElement.style.setProperty('--a2', css(cor.a2));
-    document.documentElement.style.setProperty('--giro-s',
-      humor === 'pensando' ? '2.4s' : humor === 'processando' ? '3.4s' : humor === 'som' ? (4.5 - rms * 30).toFixed(2) + 's' : '9s');
+    // var no :root invalida o estilo da ilha inteira — só escreve quando o valor muda
+    const s1 = css(cor.a1), s2 = css(cor.a2);
+    const giro = humor === 'pensando' ? '2.4s' : humor === 'processando' ? '3.4s' : humor === 'som' ? (4.5 - rms * 30).toFixed(2) + 's' : '9s';
+    const st = document.documentElement.style;
+    if (s1 !== ultimoCss.a1) { st.setProperty('--a1', s1); ultimoCss.a1 = s1; }
+    if (s2 !== ultimoCss.a2) { st.setProperty('--a2', s2); ultimoCss.a2 = s2; }
+    if (giro !== ultimoCss.giro) { st.setProperty('--giro-s', giro); ultimoCss.giro = giro; }
     return humor;
   }
 
@@ -872,11 +876,7 @@
   }
 
   const dock = $('#dock');
-  // avatar do topo da tira: o rosto do mascote copiado a cada quadro (mesma vida, mesmo tamanho)
-  const avatar = (() => {
-    const cv = $('#avatar-cv'), cx = cv.getContext('2d');
-    return { copiar() { ajustarCanvas(cv, 28, 24); cx.drawImage($('#mascote'), 0, 0, cv.width, cv.height); } };
-  })();
+  // avatar do topo da tira era uma cópia viva do mascote — virou a casinha fixa do dock
   $$('.dock [data-vista]').forEach(b => b.addEventListener('click', () => mostrarVista(b.dataset.vista)));
   $$('[data-painel]').forEach(b => b.addEventListener('click', () => { if (ponte) ponte.painel(b.dataset.painel); }));
 
@@ -1450,6 +1450,7 @@
   }
   setInterval(() => {
     if (audioAtivo) tempoAudio += .1;
+    if (!aberta || vista !== 'som') return;      // contador escondido não toca no DOM
     $('#gv-tempo').textContent = fmtTempo(tempoAudio);
     $('#gv-decimo').textContent = '.' + (Math.floor(tempoAudio * 10) % 10);
   }, 100);
@@ -1985,7 +1986,7 @@
   function redimensionarCanvases() { grafico.desenhar(); desenharSomMini(); }
   window.addEventListener('resize', redimensionarCanvases);
 
-  let ultimo = performance.now(), ultimoOrbe = 0;
+  let ultimo = performance.now(), ultimoOrbe = 0, ultimoHome = 0;
   function quadro(t) {
     const dt = lim((t - ultimo) / 1000, 0, .05);
     ultimo = t;
@@ -1997,8 +1998,7 @@
       jorgeIlha.desenhar(t);
       ultimoOrbe = t;
     }
-    if (aberta) avatar.copiar();
-    if (aberta && vista === 'home') { grafico.desenhar(); desenharSomMini(); }
+    if (aberta && vista === 'home' && t - ultimoHome >= 33) { ultimoHome = t; grafico.desenhar(); desenharSomMini(); }
     if (aberta && vista === 'som') estudio.desenhar(dt);
     if (aberta && vista === 'chat') vibra.desenhar(dt);
     if (aberta && vista === 'cerebro') cerebro.desenhar(dt);

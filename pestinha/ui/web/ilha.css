@@ -379,10 +379,10 @@ select { background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 
   background: rgba(8, 9, 14, .95); padding: 4px 9px; border-radius: 8px; font-size: 10.5px; white-space: nowrap; color: var(--texto);
   transition: opacity .15s, transform .2s cubic-bezier(.2, .9, .2, 1.4); }
 .dock button:hover .dica { opacity: 1; transform: translateY(-50%) scale(1); }
-/* avatar do pet no topo da tira: o mesmo rosto da barra, com sinal de status */
+/* botão Início: casinha como os demais ícones, com sinal de status no canto */
 .dock .avatar { width: 34px; height: 34px; border-radius: 50%; overflow: visible; }
+.dock .avatar svg { width: 17px; height: 17px; }
 .dock .avatar.ativo { background: rgba(255, 255, 255, .09); }
-#avatar-cv { width: 28px; height: 24px; border-radius: 50%; }
 .dock .avatar .sinal { position: absolute; right: -2px; bottom: -2px; width: 9px; height: 9px; border-radius: 50%;
   background: var(--a1); border: 2px solid #0a0b12; box-shadow: 0 0 6px var(--a1); }
 /* alça do rodapé: segura e arrasta a ilha (mesmo gesto da barra); a área de toque é maior que o traço */
