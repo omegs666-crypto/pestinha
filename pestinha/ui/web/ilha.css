@@ -64,13 +64,15 @@ button, select, textarea, input { font: inherit; color: inherit; }
 /* ----- barra (sempre visível) ----- */
 .barra { position: relative; z-index: 2; height: 46px; display: grid; grid-template-columns: 1fr auto 1fr;
   align-items: center; padding: 0 18px; gap: 10px; cursor: grab; }
-/* mini-faixa do rodapé: encolhe o trio e esconde data/hora; abrir mostra tudo de novo */
-.nucleo.rodape:not(.aberto) .barra { height: 32px; padding: 0 10px; gap: 6px; }
-.nucleo.rodape:not(.aberto) .data, .nucleo.rodape:not(.aberto) .hora { display: none; }
-.nucleo.rodape:not(.aberto) #mascote { width: 34px; height: 24px; }
-.nucleo.rodape:not(.aberto) #orbe { width: 22px; height: 22px; }
-.nucleo.rodape:not(.aberto) #jorge-ilha { width: 22px; height: 25px; }
-.nucleo.rodape:not(.aberto) .balao { font-size: 10px; padding: 2px 8px; }
+/* mini-faixa (fechada, em cima ou no rodapé): o trio encolhe, data/hora somem e os
+   personas vão para as pontas — Bryan à esquerda, orbe+balão no centro, Jorge à direita */
+.nucleo:not(.aberto) .barra { height: 32px; padding: 0 10px; gap: 6px; }
+.nucleo:not(.aberto) .data, .nucleo:not(.aberto) .hora { display: none; }
+.nucleo:not(.aberto) .meio { grid-column: 1 / -1; width: 100%; gap: 6px; }
+.nucleo:not(.aberto) #mascote { width: 34px; height: 24px; margin-right: auto; }
+.nucleo:not(.aberto) #orbe { width: 22px; height: 22px; }
+.nucleo:not(.aberto) #jorge-ilha { width: 22px; height: 25px; margin-left: auto; }
+.nucleo:not(.aberto) .balao { font-size: 10px; padding: 2px 8px; }
 #mascote { width: 64px; height: 44px; flex: none; cursor: pointer; }
 .data, .hora { font: 600 11px/1 var(--fonte-num); letter-spacing: .08em; color: var(--suave); white-space: nowrap; }
 .hora { justify-self: end; font-variant-numeric: tabular-nums; color: var(--texto); }

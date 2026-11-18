@@ -19,7 +19,7 @@
   const nucleo = $('#nucleo');
 
   const TAM = {
-    compacta: { w: 380, h: 46, r: 23 },
+    compacta: { w: 250, h: 32, r: 16 },      // fechada: a mesma mini-faixa do rodapé, em cima ou solta
     rodape: { w: 250, h: 32, r: 16 },        // modo escondido: mini-faixa no rodapé (como o Coucou)
     home: { w: 1000, h: 480, r: 30 },
     grande: { w: 1000, h: 594, r: 30 },
@@ -41,7 +41,7 @@
   const DESGRUDAR_PX = 14;                // puxar este tanto para baixo a solta do topo
   let estado = {};
   let aberta = false, fixada = false, vista = 'home';
-  let timerAbrir = null, timerFechar = null;
+  let timerFechar = null;
   let audioAtivo = false, bandas = new Array(24).fill(0), rms = 0, pico = 0;
   let pensandoNarrador = false, alertaAte = 0;
   let historico = [], modelos = [], respondendo = false, bolhaAtual = null, textoAtual = '';
@@ -192,16 +192,15 @@
     contagem.hidden = true;
   }
 
-  // hover abre com um pequeno atraso; sair começa a contagem para recolher
+  // abrir é SÓ no clique (orbe/balão). Voltar com o mouse só segura o painel aberto:
+  // cancela a contagem de recolher; sair dela recomeça a contagem.
   // durante o arraste a janela anda sob o cursor: esses eventos de entrada/saída não contam
   let arrastando = false, fimArrasteT = 0;
   nucleo.addEventListener('mouseenter', () => {
     if (arrastando) return;
     cancelarContagem();
-    if (!aberta) timerAbrir = setTimeout(() => abrir(true), 260);
   });
   nucleo.addEventListener('mouseleave', () => {
-    clearTimeout(timerAbrir);
     if (!arrastando) agendarRecolher();
   });
   // Arrastar: segurar a barra, a alça da tira ou qualquer área vazia do painel move a ilha.
@@ -219,7 +218,7 @@
     if (!arraste) return;
     const dx = e.screenX - arraste.x, dy = e.screenY - arraste.y;
     if (!arrastou && Math.hypot(e.screenX - arraste.sx, e.screenY - arraste.sy) < 4) return;
-    if (!arrastou) { arrastando = true; clearTimeout(timerAbrir); cancelarContagem(); }
+    if (!arrastou) { arrastando = true; cancelarContagem(); }
     arrastou = true;
     arraste.x = e.screenX; arraste.y = e.screenY;
     if (modoTopo || modoRodape) {
