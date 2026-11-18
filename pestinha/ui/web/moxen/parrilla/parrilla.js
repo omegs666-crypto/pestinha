@@ -216,6 +216,7 @@
     const px = { x: i => i * (S.colW + S.hueco), y: i => i * (S.fila + S.hueco), w: i => i * S.colW + (i - 1) * S.hueco, h: i => i * S.fila + (i - 1) * S.hueco };
     function mide() {
       S.W = caja.clientWidth;
+      if (S.W <= 0) return;      // iframe oculto o aún sin layout: mediría colW negativo y ensuciaría la disposición
       const estrecha = S.W < 640;
       const cols = estrecha ? 4 : o.columnas;
       if (cols !== S.cols) adaptaColumnas(cols);
@@ -236,6 +237,7 @@
       }
     }
     function pintaRejilla(items) {
+      if (S.colW <= 0) { rejilla.textContent = ''; return; }   // sin medida válida no hay casillas que pintar
       const n = filas(items), clave = S.cols + 'x' + n + ':' + S.colW.toFixed(1) + ':' + S.fila;
       if (rejilla.__k === clave) return;
       rejilla.__k = clave;
