@@ -308,7 +308,7 @@
     return [hslParaRgb(h, 95, 62), hslParaRgb((h + 55) % 360, 90, 60)];
   }
 
-  const ultimoCss = { a1: '', a2: '', giro: '' };
+  const ultimoCss = { a1: '', a2: '' };
   function atualizarCores() {
     const humor = humorAtual();
     if (nucleo.dataset.humor !== humor) nucleo.dataset.humor = humor;
@@ -320,11 +320,9 @@
     const css = c => `rgb(${c.map(Math.round).join(',')})`;
     // var no :root invalida o estilo da ilha inteira — só escreve quando o valor muda
     const s1 = css(cor.a1), s2 = css(cor.a2);
-    const giro = humor === 'pensando' ? '2.4s' : humor === 'processando' ? '3.4s' : humor === 'som' ? (4.5 - rms * 30).toFixed(2) + 's' : '9s';
     const st = document.documentElement.style;
     if (s1 !== ultimoCss.a1) { st.setProperty('--a1', s1); ultimoCss.a1 = s1; }
     if (s2 !== ultimoCss.a2) { st.setProperty('--a2', s2); ultimoCss.a2 = s2; }
-    if (giro !== ultimoCss.giro) { st.setProperty('--giro-s', giro); ultimoCss.giro = giro; }
     return humor;
   }
 
