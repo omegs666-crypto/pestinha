@@ -367,6 +367,38 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
   .es-seg button { padding: 0 10px; }
 }
 
+/* ── a paleta de tipos: presa ao canto do mundo, acompanha o scroll ── */
+.es-paleta { position: sticky; top: 14px; left: 14px; z-index: 6; display: flex; flex-direction: column; gap: 5px; width: max-content; padding: 9px; border-radius: 16px; background: var(--es-papel); border: 1px solid var(--es-linea); box-shadow: 0 16px 30px -20px rgba(var(--es-sombra), .5), 0 2px 6px -2px rgba(var(--es-sombra), .1); }
+.es-pal-tit { font: 700 9.5px/1 var(--es-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--es-tenue); padding: 2px 6px 4px; }
+.es-pal { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 7px; border-radius: 11px; border: 1px solid transparent; background: none; font: 600 12.5px/1 var(--es-sans); color: var(--es-tinta); cursor: grab; transition: background .25s, border-color .25s, translate .35s var(--es-muelle); touch-action: none; }
+.es-pal .es-ic { width: 17px; height: 17px; }
+.es-pal:active { cursor: grabbing; }
+@media (hover: hover) { .es-pal:hover { background: var(--es-violeta-suave); border-color: rgba(109, 74, 255, .3); translate: 0 -1px; } }
+.is-arrastrando, .is-arrastrando * { cursor: grabbing !important; }
+.es-pal-fant { position: fixed; left: 0; top: 0; z-index: 80; display: flex; align-items: center; gap: 8px; padding: 9px 14px 9px 11px; border-radius: 14px; background: var(--es-papel); border: 1.5px dashed var(--es-violeta); color: var(--es-tinta); font: 600 12.5px/1 var(--es-sans); box-shadow: 0 18px 34px -16px rgba(var(--es-sombra), .55); pointer-events: none; opacity: .95; }
+.es-pal-fant .es-ic { width: 17px; height: 17px; }
+
+/* ── caixas soltas: fora do fluxo, a tinta é tracejada ────────────── */
+.es-solto .es-nodo { border-style: dashed; border-color: var(--es-gris); }
+.es-solto-tag { position: absolute; top: -9px; right: 10px; padding: 2.5px 8px; border-radius: 999px; background: var(--es-ambar-suave); border: 1px solid var(--es-ambar); color: var(--es-ambar-tx); font: 700 9px/1 var(--es-sans); letter-spacing: .1em; text-transform: uppercase; pointer-events: none; }
+.es-solto { cursor: grab; }
+.is-movendo .es-solto, .es-solto:active { cursor: grabbing; }
+.es-bloque.es-mov { pointer-events: none; }
+
+/* ── as portas: de onde o fio sai puxando ─────────────────────────── */
+.es-portas { position: absolute; right: -10px; top: 50%; translate: 0 -50%; display: flex; flex-direction: column; gap: 5px; z-index: 3; }
+.es-porta { display: grid; place-items: center; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--es-papel); border: 2px solid var(--es-gris); color: var(--es-violeta-tx); font: 800 7.5px/1 var(--es-sans); letter-spacing: .02em; cursor: crosshair; transition: scale .35s var(--es-muelle), border-color .25s, box-shadow .25s; touch-action: none; }
+.es-porta:empty { width: 15px; padding: 0; }
+@media (hover: hover) { .es-porta:hover { scale: 1.35; border-color: var(--es-violeta); box-shadow: 0 0 0 4px var(--es-violeta-suave); } }
+.is-fiando .es-porta { border-color: var(--es-violeta); }
+.is-fiando { cursor: crosshair; }
+
+/* ── o fio puxado e os alvos que ele pode tocar ───────────────────── */
+.es-fio { fill: none; stroke: var(--es-violeta); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 7 6; animation: es-fio-corre .7s linear infinite; filter: drop-shadow(0 2px 4px rgba(109, 74, 255, .35)); }
+@keyframes es-fio-corre { to { stroke-dashoffset: -13; } }
+.es-alvo-fio .es-nodo { border-color: var(--es-violeta) !important; box-shadow: 0 0 0 5px var(--es-violeta-suave) !important; }
+.es-mas.es-alvo-fio { scale: 1.45; background: var(--es-violeta); border-color: var(--es-violeta); color: #fff; box-shadow: 0 0 0 5px var(--es-violeta-suave); }
+
 /* ── movimiento reducido: todo cambia de golpe ────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .es-escena *, .es-menu, .es-fantasma { animation: none !important; transition: none !important; }

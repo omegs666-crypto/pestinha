@@ -177,28 +177,127 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .estudio .hud .estado { flex: 1; color: var(--suave); }
 .estudio .dica { position: absolute; left: 16px; bottom: 12px; color: var(--apagado); font-size: 11px; }
 
-/* ----- chat ----- */
-.chat { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 22px;
-  background: var(--vidro-2); box-shadow: 0 0 0 1px var(--fio) inset; }
+/* ----- chat: duas colunas (conversa + ficha), estilo a referência ----- */
+.chat { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr) 218px; gap: 10px;
+  padding: 12px; border-radius: 22px; background: var(--vidro-2); box-shadow: 0 0 0 1px var(--fio) inset; }
+.chat-conversa { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
 .chat .topo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 select { background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px;
   padding: 6px 12px; min-width: 220px; color-scheme: dark; }
 .marca { color: var(--suave); font-size: 11px; display: flex; align-items: center; gap: 6px; }
 .marca input { accent-color: var(--a1); }
+.modelo-pull { display: inline-flex; align-items: center; gap: 6px; }
+.modelo-pull #modelo-pull-p { font: 600 11px/1 var(--fonte-num); color: var(--a1); }
 .aviso-chat { color: var(--ambar); font-size: 11px; background: rgba(255, 181, 71, .08); border: 1px solid rgba(255, 181, 71, .25);
   border-radius: 12px; padding: 6px 10px; }
 .erro { color: var(--perigo); font-size: 11px; background: rgba(255, 90, 110, .08); border: 1px solid rgba(255, 90, 110, .25);
   border-radius: 12px; padding: 6px 10px; }
-.mensagens { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px;
+.mensagens { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 6px 4px;
   scrollbar-width: thin; scrollbar-color: #2a2d3a transparent; user-select: text; }
-.bolha { max-width: 78%; padding: 9px 13px; border-radius: 18px; white-space: pre-wrap; word-wrap: break-word; font-size: 12.5px;
-  animation: entrar .35s cubic-bezier(.2, .9, .2, 1.2); }
-.bolha.usuario { align-self: flex-end; background: linear-gradient(135deg, var(--a1), var(--a2)); color: #060710; border-bottom-right-radius: 6px; }
-.bolha.assistente { align-self: flex-start; background: rgba(255, 255, 255, .06); border-bottom-left-radius: 6px; }
+
+/* mensagem: avatar + (meta: autor e hora) + bolha — mensagens seguidas encostam e escondem o avatar */
+.msg { display: flex; gap: 9px; max-width: 82%; animation: entrar .35s cubic-bezier(.2, .9, .2, 1.2); }
+.msg.usuario { align-self: flex-end; flex-direction: row-reverse; }
+.msg-avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; margin-top: 2px;
+  box-shadow: 0 0 0 1px var(--fio), 0 4px 10px -4px rgba(0, 0, 0, .6); }
+.msg.seguida { margin-top: -8px; }
+.msg.seguida .msg-avatar { visibility: hidden; }
+.msg.seguida .msg-meta { display: none; }
+.msg-copo { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.msg.usuario .msg-copo { align-items: flex-end; }
+.msg-meta { display: flex; align-items: baseline; gap: 7px; padding: 0 4px; }
+.msg-meta b { font-size: 11px; color: var(--suave); letter-spacing: .02em; }
+.msg.usuario .msg-meta b { color: var(--a1); }
+.msg.assistente .msg-meta b { color: #e2b13c; }
+.msg-meta time { font: 500 9.5px/1 var(--fonte-num); color: var(--apagado); }
+.msg-bolha { padding: 9px 13px; border-radius: 16px; font-size: 12.5px; line-height: 1.45; word-wrap: break-word; }
+.msg.usuario .msg-bolha { background: linear-gradient(135deg, var(--a1), var(--a2)); color: #060710;
+  border-bottom-right-radius: 5px; white-space: pre-wrap; }
+.msg.assistente .msg-bolha { background: rgba(255, 255, 255, .055); border: 1px solid rgba(255, 255, 255, .05);
+  border-bottom-left-radius: 5px; }
+.msg-bolha p { margin: 0 0 7px; }
+.msg-bolha p:last-child { margin-bottom: 0; }
+.msg-lista { margin: 2px 0 7px; padding-left: 18px; display: grid; gap: 3px; }
+.mi { font: 400 11.5px/1.4 var(--fonte-num); background: rgba(255, 255, 255, .09); border-radius: 5px; padding: 1.5px 5px; }
+.msg-codigo { margin: 3px 0 7px; border-radius: 12px; overflow: hidden; background: #07080d;
+  border: 1px solid var(--fio); }
+.msg-codigo-cab { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px;
+  background: rgba(255, 255, 255, .045); font: 600 10px/1 var(--fonte-num); letter-spacing: .05em; color: var(--apagado); }
+.msg-codigo-cab button { border: 0; background: none; color: var(--a1); font: 600 10px/1 var(--fonte); cursor: pointer; padding: 2px 4px; }
+.msg-codigo pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: 400 11.5px/1.5 var(--fonte-num);
+  scrollbar-width: thin; }
+.msg-anexo { display: flex; align-items: center; gap: 10px; margin: 4px 0 6px; padding: 9px 11px; border-radius: 13px;
+  background: rgba(255, 255, 255, .045); border: 1px solid var(--fio); }
+.msg-anexo svg { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--a1); stroke-width: 1.7; stroke-linejoin: round; }
+.msg-anexo-i { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.msg-anexo-i b { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-anexo-i small { font: 500 10px/1 var(--fonte-num); color: var(--apagado); }
+.msg-anexo button { border: 0; border-radius: 9px; padding: 6px 11px; cursor: pointer;
+  font: 600 10.5px/1 var(--fonte); background: var(--a1); color: #04161d; }
+.msg-anexo button.sec { background: rgba(255, 255, 255, .07); color: var(--texto); box-shadow: 0 0 0 1px var(--fio); }
+.msg-anexo-off { font-size: 10px; color: var(--apagado); }
+
+/* "escrevendo…": três pontinhos no ritmo dele */
+.digit { display: inline-flex; gap: 4px; padding: 3px 2px; }
+.digit i { width: 6px; height: 6px; border-radius: 50%; background: var(--suave);
+  animation: digit-pula 1.15s ease-in-out calc(var(--k, 0) * .15s) infinite; }
+.digit i:nth-child(2) { --k: 1; } .digit i:nth-child(3) { --k: 2; }
+@keyframes digit-pula { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
+
+/* a ficha lateral: o cartão da sessão */
+.chat-ficha { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto;
+  padding: 13px 13px 12px; border-radius: 18px; background: rgba(255, 255, 255, .025);
+  box-shadow: inset 0 0 0 1px var(--fio); scrollbar-width: thin; scrollbar-color: #2a2d3a transparent; }
+.ficha-cab { display: flex; align-items: center; gap: 10px; }
+.ficha-cab canvas { flex: none; width: 46px; height: 46px; border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--fio), 0 6px 14px -6px rgba(0, 0, 0, .7); }
+.ficha-quem { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ficha-quem b { font-size: 14.5px; letter-spacing: -.01em; }
+.ficha-status { display: inline-flex; align-items: center; gap: 6px; font: 600 10px/1 var(--fonte);
+  letter-spacing: .05em; color: var(--suave); }
+.ficha-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--verde); box-shadow: 0 0 6px var(--verde); }
+.ficha-status[data-s="pensando"] i { background: var(--a2); box-shadow: 0 0 6px var(--a2); }
+.ficha-status[data-s="falando"] i { background: var(--a1); box-shadow: 0 0 6px var(--a1); }
+.ficha-status[data-s="ouvindo"] i { background: var(--ambar); box-shadow: 0 0 6px var(--ambar); }
+.ficha-tag { flex: none; align-self: flex-start; border: 0; border-radius: 99px; padding: 4px 9px; cursor: default;
+  font: 600 9px/1 var(--fonte); letter-spacing: .05em; text-transform: uppercase;
+  color: #e2b13c; background: rgba(226, 177, 60, .12); }
+.ficha-ctx { display: flex; flex-direction: column; gap: 6px; }
+.ficha-ctx-t { display: flex; justify-content: space-between; font: 500 10.5px/1 var(--fonte); color: var(--suave); }
+.ficha-ctx-t b { font-family: var(--fonte-num); color: var(--texto); }
+.ficha-barra { height: 6px; border-radius: 6px; background: rgba(255, 255, 255, .06); overflow: hidden; }
+.ficha-barra i { display: block; height: 100%; border-radius: 6px; transform-origin: left;
+  background: linear-gradient(90deg, var(--a1), var(--a2)); transition: transform .5s cubic-bezier(.2, .9, .25, 1); }
+.ficha-campos { margin: 0; display: grid; gap: 7px; }
+.ficha-campos > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  padding-bottom: 7px; border-bottom: 1px dashed rgba(255, 255, 255, .07); }
+.ficha-campos dt { font: 500 10px/1 var(--fonte); letter-spacing: .08em; text-transform: uppercase; color: var(--apagado); }
+.ficha-campos dd { margin: 0; font: 600 11px/1 var(--fonte-num); max-width: 120px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.ficha-sec { font: 600 9.5px/1 var(--fonte); letter-spacing: .1em; text-transform: uppercase; color: var(--apagado); }
+.ficha-atividade { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.ficha-atividade:empty::after { content: attr(data-vazia); font-size: 10.5px; color: var(--apagado); }
+.ficha-atividade li { display: flex; align-items: baseline; gap: 7px; font-size: 11px; color: var(--suave); }
+.ficha-atividade li i { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--a1);
+  transform: translateY(-1px); }
+.ficha-atividade li span { flex: 1; min-width: 0; }
+.ficha-atividade li time { font: 500 9px/1 var(--fonte-num); color: var(--apagado); }
+.ficha-acoes { margin-top: auto; display: grid; gap: 7px; }
+.ficha-acoes .pilula { width: 100%; justify-content: center; }
+
 .composer { display: flex; align-items: flex-end; gap: 6px; }
-.composer textarea { flex: 1; height: 50px; resize: none; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .10);
-  border-radius: 16px; padding: 9px 13px; outline: none; user-select: text; }
+.composer textarea { flex: 1; height: 40px; max-height: 110px; resize: none; background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .10); border-radius: 16px; padding: 10px 13px; outline: none; user-select: text; }
 .composer textarea:focus { border-color: color-mix(in srgb, var(--a1) 60%, transparent); }
+#ouvir.ouvindo { color: #04161d; background: linear-gradient(180deg, #ffd9a0, var(--ambar)); }
+@keyframes ouve-pulsa { 50% { box-shadow: 0 0 0 6px rgba(255, 181, 71, .12); } }
+#ouvir.ouvindo { animation: ouve-pulsa 1.2s ease-in-out infinite; }
+
+/* ilha estreita: a ficha vira segunda tela interna? não — colapsa e vira trilho fino */
+@media (max-width: 900px) {
+  .chat { grid-template-columns: minmax(0, 1fr); }
+  .chat-ficha { display: none; }
+}
 
 /* ----- diagramas: reações do pet (gatilho -> fala -> espera -> sim/não) ----- */
 .fluxos { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 22px;
@@ -232,9 +331,6 @@ select { background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 
 .jorgito-wrap b { font-size: 10px; font-weight: 600; color: #ffd166; }
 .jorgito-wrap.pensando canvas { animation: jorgito-pulsa 1.1s ease-in-out infinite; }
 @keyframes jorgito-pulsa { 50% { transform: scale(1.12); filter: drop-shadow(0 0 6px rgba(255, 209, 102, .8)); } }
-.bolha.assistente { position: relative; }
-.bolha.assistente[data-autor]::before { content: attr(data-autor); display: block; font-size: 9px;
-  font-weight: 700; letter-spacing: .4px; color: #ffd166; margin-bottom: 2px; text-transform: uppercase; }
 .cb-legenda { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; gap: 3px;
   font-size: 10px; color: var(--suave); text-transform: lowercase; }
 .cb-legenda i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }

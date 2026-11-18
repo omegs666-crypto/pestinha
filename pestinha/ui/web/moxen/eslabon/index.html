@@ -54,8 +54,10 @@
           <svg class="es-cables" data-cables aria-hidden="true">
             <g class="es-pulso is-off" data-pulso><circle class="pu-halo" r="19"/><circle class="pu-nucleo" r="6"/></g>
           </svg>
+          <!-- a paleta: arrasta um tipo para criar uma caixa solta em qualquer ponto -->
+          <aside class="es-paleta" data-paleta aria-label="Tipos de passo"></aside>
         </div>
-        <p class="es-pista" data-pista><kbd>+</kbd> adiciona um passo <span>·</span> arraste um dado para um campo<span class="es-tec"> <span>·</span> <kbd>↑</kbd><kbd>↓</kbd> percorrem</span></p>
+        <p class="es-pista" data-pista><kbd>+</kbd> adiciona um passo <span>·</span> arraste um tipo para criar uma caixa <span>·</span> puxe da bolinha para ligar<span class="es-tec"> <span>·</span> <kbd>↑</kbd><kbd>↓</kbd> percorrem <span>·</span> duplo clique no vazio cria uma caixa</span></p>
       </section>
       <aside class="es-panel" data-panel aria-label="Configuração do passo"></aside>
     </div>
@@ -69,8 +71,9 @@
   window.addEventListener('message', ev => {
     const d = ev.data || {};
     if (ev.source !== parent || d.tipo !== 'init' || window.eslabon) return;
-    const opc = { alCambiar: ({ flujo }) => parent.postMessage({ tipo: 'salvar', nome: 'diagrama', dados: JSON.stringify({ flujo }) }, '*') };
+    const opc = { alCambiar: ({ flujo, soltos }) => parent.postMessage({ tipo: 'salvar', nome: 'diagrama', dados: JSON.stringify({ flujo, soltos }) }, '*') };
     if (d.flujo && Array.isArray(d.flujo)) opc.flujo = d.flujo;
+    if (d.soltos && Array.isArray(d.soltos)) opc.soltos = d.soltos;
     window.eslabon = Eslabon(document.querySelector('[data-eslabon]'), opc);
   });
 </script>

@@ -194,6 +194,8 @@ class _TaskSignals(QObject):
     limited = Signal()
     error = Signal(str)
     speech_audio = Signal(bytes)
+    progress = Signal(object)       # pull: {"status": str, "pct": int|None}
+    pull_done = Signal()
     retired = Signal(object)
 
 
@@ -298,6 +300,44 @@ class _OllamaTask:
                     response.close()
                 if not self._cancelled.is_set():
                     self.signals.models.emit(models)
+                return
+
+            if self.operation == "pull":
+                # POST /api/pull: JSONL com {"status", "completed", "total"} por camada —
+                # o progresso chega sem parar, então o timeout de leitura pode ser folgado.
+                if not self.model:
+                    raise ValueError("Nome de modelo vazio.")
+                if self._cancelled.is_set():
+                    return
+                with session.post(
+                    f"{host}/api/pull",
+                    json={"model": self.model, "stream": True},
+                    stream=True,
+                    timeout=(2, 120),
+                    headers=_auth_headers(),
+                    allow_redirects=False,
+                ) as response:
+                    self._set_response(response)
+                    _reject_redirect(response)
+                    response.raise_for_status()
+                    for line in response.iter_lines(decode_unicode=True):
+                        if self._cancelled.is_set():
+                            break
+                        if not line:
+                            continue
+                        dado = json.loads(line)
+                        if not isinstance(dado, dict):
+                            continue
+                        total = dado.get("total") or 0
+                        feito = dado.get("completed") or 0
+                        pct = round(feito * 100 / total) if total else None
+                        self.signals.progress.emit({
+                            "status": str(dado.get("status") or "")[:120],
+                            "pct": pct,
+                        })
+                self._set_response(None)
+                if not self._cancelled.is_set():
+                    self.signals.pull_done.emit()
                 return
 
             if self.operation == "speech":
@@ -405,12 +445,14 @@ class OllamaLocal(QObject):
     response_limited = Signal()
     speech_ready = Signal(bytes)
     speech_failed = Signal(str)
+    pull_progress = Signal(object)
+    pull_finished = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._tasks = set()
         self._tasks_lock = threading.Lock()
-        self._max_tasks = 2
+        self._max_tasks = 3   # um pull pode baixar em paralelo com o chat
 
     def list_models_async(self):
         """Consulta ollama.list() num worker; o loop de eventos da interface não espera."""
@@ -450,6 +492,17 @@ class OllamaLocal(QObject):
         )
         task.signals.speech_audio.connect(self.speech_ready)
         task.signals.error.connect(self.speech_failed)
+        self._submit(task)
+
+    def pull_async(self, model):
+        """Baixa um modelo (`/api/pull`) com progresso por sinais; só o loopback, sem proxy."""
+        if not isinstance(model, str) or not model.strip():
+            self.error.emit("Nome de modelo inválido para baixar.")
+            return
+        task = _OllamaTask("pull", model=model.strip()[:200])
+        task.signals.progress.connect(self.pull_progress)
+        task.signals.pull_done.connect(self.pull_finished)
+        task.signals.error.connect(self.error)
         self._submit(task)
 
     def _submit(self, task):

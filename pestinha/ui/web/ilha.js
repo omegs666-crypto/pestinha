@@ -905,7 +905,7 @@
     });
     const marcado = { pausa: !!estado.pausado, voz: !!estado.voz, travessuras: !!estado.travessuras,
       avion: !!estado.offline, narrador: narradorLigado, solo: !!estado.solo,
-      mente: !!estado.mente_llm };
+      mente: !!estado.mente_llm, arquivos: estado.ia_arquivos !== false };
     jorgito.visivel(!!estado.mente);
     jorgeIlha.visivel(!!estado.mente);
     $$('.chave[data-acao]').forEach(b => b.setAttribute('aria-pressed', String(!!marcado[b.dataset.acao])));
@@ -974,6 +974,7 @@
     $('#pet-nome').textContent = estado.pet || 'Pestinha';
     $('#pet-emocao').textContent = (estado.emocao || '—').toLowerCase();
     mascote.definirEmocao(estado.emocao_chave);
+    atualizarFicha();   // voz/modelo/humor da ficha acompanham o estado
     mascote.definirCarinho(estado.carinho);
     mascote.definirFora(estado.solo && estado.solo_livre);   // um-persona-só: fora da ilha, o mascote some
     $('#st-energia').textContent = (estado.energia ?? 0) + '%';
@@ -1490,7 +1491,7 @@
     if (quadro.dataset.quadro === 'parrilla') {
       ponte.carregar('layout', t => enviar(quadro, { tipo: 'init', layout: t ? JSON.parse(t) : null }));
     } else if (quadro.dataset.quadro === 'eslabon') {
-      ponte.carregar('diagrama', t => { const d = t ? JSON.parse(t) : {}; enviar(quadro, { tipo: 'init', flujo: d.flujo || null }); });
+      ponte.carregar('diagrama', t => { const d = t ? JSON.parse(t) : {}; enviar(quadro, { tipo: 'init', flujo: d.flujo || null, soltos: d.soltos || null }); });
     }
     enviarMetricas();
   }
@@ -1521,6 +1522,7 @@
       // chaves de estado (data-on acende quando verdadeiro)
       pausado: !!e.pausado, processando: !!e.processando, voz: !!e.voz, travessuras: !!e.travessuras,
       solo: !!e.solo, mente_llm: !!e.mente_llm, offline: !!e.offline, carinho: !!e.carinho,
+      ia_arquivos: e.ia_arquivos !== false,
       logs: e.logs || [],
     };
     $$('iframe[data-quadro="parrilla"]').forEach(f => enviar(f, { tipo: 'metricas', dados }));
@@ -1537,17 +1539,193 @@
     if (!persistente) caixa._t = setTimeout(() => { caixa.hidden = true; }, 7000);
   }
 
+  // ----- conversa: mensagens com avatar, autor e hora (estilo chat profissional) -----
+  let ultimoAutor = null;
+  const horaAgora = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  // avatar 30×30 desenhado na hora: o Jorge dourado de um lado, você do outro
+  function avatarPapel(cv, papel) {
+    const c = cv.getContext('2d'), s = cv.width;
+    c.clearRect(0, 0, s, s);
+    if (papel === 'usuario') {
+      const g = c.createLinearGradient(0, 0, s, s);
+      g.addColorStop(0, '#45e6ff'); g.addColorStop(1, '#7c6bff');
+      c.fillStyle = g;
+      c.beginPath(); c.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#0a0c14';
+      c.beginPath(); c.arc(s / 2, s * .40, s * .16, 0, Math.PI * 2); c.fill();                    // cabeça
+      c.beginPath(); c.arc(s / 2, s * .92, s * .30, Math.PI, 0); c.fill();                        // ombros
+    } else {
+      c.fillStyle = '#e2b13c';
+      c.beginPath(); c.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2); c.fill();                        // casca dourada
+      c.fillStyle = '#241a04';
+      c.beginPath(); c.arc(s * .38, s * .42, s * .055, 0, Math.PI * 2); c.fill();                 // olhos
+      c.beginPath(); c.arc(s * .62, s * .42, s * .055, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = '#241a04'; c.lineWidth = s * .05; c.lineCap = 'round';
+      c.beginPath(); c.arc(s / 2, s * .52, s * .16, Math.PI * .15, Math.PI * .85); c.stroke();    // sorriso
+      c.fillStyle = '#b0323c';
+      c.beginPath(); c.moveTo(s / 2, s * .68); c.lineTo(s * .60, s * .78); c.lineTo(s / 2, s * .94); c.lineTo(s * .40, s * .78); c.closePath(); c.fill();  // gravata
+    }
+  }
+
   function bolha(papel, texto) {
-    const el = document.createElement('div');
-    el.className = 'bolha ' + papel; el.textContent = texto;
-    mensagens.appendChild(el); mensagens.scrollTop = mensagens.scrollHeight;
-    return el;
+    const seguida = ultimoAutor === papel;
+    ultimoAutor = papel;
+    const msg = document.createElement('div');
+    msg.className = 'msg ' + papel + (seguida ? ' seguida' : '');
+    const avatar = document.createElement('canvas');
+    avatar.className = 'msg-avatar'; avatar.width = avatar.height = 30;
+    avatarPapel(avatar, papel);
+    const copo = document.createElement('div'); copo.className = 'msg-copo';
+    const meta = document.createElement('div'); meta.className = 'msg-meta';
+    const b_autor = document.createElement('b');
+    b_autor.textContent = papel === 'usuario' ? 'Você' : (estado.mente || 'Jorge');
+    const t = document.createElement('time'); t.textContent = horaAgora();
+    meta.append(b_autor, t);
+    const b = document.createElement('div'); b.className = 'msg-bolha';
+    b.textContent = texto;
+    copo.append(meta, b);
+    msg.append(avatar, copo);
+    mensagens.appendChild(msg); mensagens.scrollTop = mensagens.scrollHeight;
+    return b;   // o elemento de conteúdo: texto puro (usuário) ou markdown (assistente)
+  }
+
+  // ----- markdown mínimo e seguro: negrito/itálico/código/listas + blocos cercados -----
+  const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inlineMd = s => escHtml(s)
+    .replace(/`([^`\n]+)`/g, '<code class="mi">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[\s(])_([^_\n]+)_/g, '$1<i>$2</i>');
+
+  function renderBlocos(el, texto) {
+    for (const trecho of texto.split(/\n{2,}/)) {
+      if (!trecho.trim()) continue;
+      const linhas = trecho.split('\n');
+      if (linhas.every(l => /^\s*[-•]\s+/.test(l))) {
+        const ul = document.createElement('ul'); ul.className = 'msg-lista';
+        linhas.forEach(l => { const li = document.createElement('li'); li.innerHTML = inlineMd(l.replace(/^\s*[-•]\s+/, '')); ul.appendChild(li); });
+        el.appendChild(ul);
+      } else if (linhas.every(l => /^\s*\d+[.)]\s+/.test(l))) {
+        const ol = document.createElement('ol'); ol.className = 'msg-lista';
+        linhas.forEach(l => { const li = document.createElement('li'); li.innerHTML = inlineMd(l.replace(/^\s*\d+[.)]\s+/, '')); ol.appendChild(li); });
+        el.appendChild(ol);
+      } else {
+        const p = document.createElement('p');
+        p.innerHTML = linhas.map(inlineMd).join('<br>');
+        el.appendChild(p);
+      }
+    }
+  }
+
+  function codigoCard(el, corpo, lang) {
+    const card = document.createElement('div'); card.className = 'msg-codigo';
+    const cab = document.createElement('div'); cab.className = 'msg-codigo-cab';
+    const nome = document.createElement('span'); nome.textContent = lang || 'código';
+    const copiar = document.createElement('button'); copiar.type = 'button'; copiar.textContent = 'Copiar';
+    copiar.addEventListener('click', () => {
+      (navigator.clipboard?.writeText(corpo) || Promise.reject()).then(
+        () => { copiar.textContent = 'Copiado'; },
+        () => { const ta = document.createElement('textarea'); ta.value = corpo; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); copiar.textContent = 'Copiado'; });
+      setTimeout(() => { copiar.textContent = 'Copiar'; }, 1600);
+    });
+    const pre = document.createElement('pre'); const code = document.createElement('code');
+    code.textContent = corpo; pre.appendChild(code);
+    cab.append(nome, copiar); card.append(cab, pre); el.appendChild(card);
+  }
+
+  // ```arquivo:nome.ext``` vira um anexo baixável (permissão "IA pode criar arquivos")
+  function anexoCard(el, nome, conteudo) {
+    const card = document.createElement('div'); card.className = 'msg-anexo';
+    card.innerHTML = '<svg viewBox="0 0 24 24"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/></svg>';
+    const info = document.createElement('div'); info.className = 'msg-anexo-i';
+    const b = document.createElement('b'); b.textContent = nome;
+    const tam = document.createElement('small');
+    tam.textContent = conteudo.length > 1024 ? (conteudo.length / 1024).toFixed(1) + ' KB' : conteudo.length + ' B';
+    info.append(b, tam);
+    card.appendChild(info);
+    if (estado.ia_arquivos === false || !ponte) {
+      const aviso = document.createElement('small'); aviso.className = 'msg-anexo-off';
+      aviso.textContent = 'criação de arquivos desligada';
+      card.appendChild(aviso);
+    } else {
+      const baixar = document.createElement('button'); baixar.type = 'button'; baixar.textContent = 'Baixar';
+      baixar.addEventListener('click', () => ponte.salvar_arquivo(nome, conteudo));
+      const como = document.createElement('button'); como.type = 'button'; como.className = 'sec';
+      como.textContent = 'Salvar como…';
+      como.addEventListener('click', () => ponte.salvar_arquivo_como(nome, conteudo));
+      card.append(baixar, como);
+    }
+    el.appendChild(card);
+  }
+
+  function renderMdPara(el, texto) {
+    el.textContent = '';
+    const partes = texto.split('```');
+    for (let i = 0; i < partes.length; i++) {
+      if (i % 2 === 0) { renderBlocos(el, partes[i]); continue; }
+      const br = partes[i].indexOf('\n');
+      const lang = (br === -1 ? partes[i] : partes[i].slice(0, br)).trim();
+      const corpo = (br === -1 ? '' : partes[i].slice(br + 1)).replace(/\n$/, '');
+      if (lang.startsWith('arquivo:')) anexoCard(el, lang.slice(8).trim() || 'arquivo.txt', corpo);
+      else codigoCard(el, corpo, lang);
+    }
+  }
+
+  // ----- ficha da sessão (o cartão lateral, como a referência) -----
+  function atividade(txt) {
+    const ul = $('#ficha-atividade');
+    const li = document.createElement('li');
+    const check = document.createElement('i'); const s = document.createElement('span'); s.textContent = txt;
+    const t = document.createElement('time'); t.textContent = horaAgora();
+    li.append(check, s, t); ul.appendChild(li);
+    while (ul.children.length > 7) ul.firstChild.remove();
+  }
+  function fichaStatus(s) {
+    const el = $('#ficha-status');
+    el.dataset.s = s;
+    el.lastChild.textContent = s;
+  }
+  function atualizarFicha() {
+    const pct = Math.min(100, Math.round(historico.length / MAX_HISTORICO * 100));
+    $('#ficha-ctx-v').textContent = pct + '%';
+    $('#ficha-ctx-i').style.transform = `scaleX(${(pct / 100).toFixed(3)})`;
+    $('#ficha-msgs').textContent = historico.filter(m => m.role !== 'system').length;
+    $('#ficha-modelo').textContent = $('#modelo').value || 'sem modelo';
+    $('#ficha-voz').textContent = estado.voz ? 'ligada' : 'desligada';
+    $('#ficha-nome').textContent = estado.mente || 'Jorge';
+  }
+  avatarPapel($('#ficha-avatar'), 'assistente');
+  atualizarFicha();
+
+  $('#ficha-limpar').addEventListener('click', () => {
+    mensagens.replaceChildren(); historico = []; ultimoAutor = null; atualizarFicha();
+  });
+  $('#ficha-exportar').addEventListener('click', () => {
+    if (!historico.length || !ponte) return;
+    const md = '# Conversa com ' + (estado.mente || 'Jorge') + ' — ' + new Date().toLocaleString('pt-BR') + '\n\n' +
+      historico.filter(m => m.role !== 'system')
+        .map(m => (m.role === 'user' ? '**Você**' : '**' + (estado.mente || 'Jorge') + '**') + ': ' + m.content)
+        .join('\n\n') + '\n';
+    ponte.salvar_arquivo('conversa-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.md', md);
+  });
+  let falaTimer = null;
+  function fichaFalando() {   // envelope de voz chegando: "falando" por ~1,2 s sem envelope
+    fichaStatus('falando');
+    clearTimeout(falaTimer);
+    falaTimer = setTimeout(() => fichaStatus(respondendo ? 'pensando' : 'pronto'), 1200);
   }
 
   function setOcupado(v) {
     respondendo = v;
     $('#enviar').disabled = v; $('#analisar').disabled = v; $('#parar').hidden = !v;
+    fichaStatus(v ? 'pensando' : 'pronto');
   }
+
+  // a caixa cresce até ~5 linhas sozinha
+  entrada.addEventListener('input', () => {
+    entrada.style.height = 'auto';
+    entrada.style.height = Math.min(110, entrada.scrollHeight) + 'px';
+  });
 
   function enviarChat(texto, exibido) {
     const modelo = $('#modelo').value;
@@ -1556,17 +1734,19 @@
     bolha('usuario', exibido || texto);
     historico.push({ role: 'user', content: texto });
     historico = historico.slice(-MAX_HISTORICO);
-    bolhaAtual = bolha('assistente', '…');
-    if (estado.mente) bolhaAtual.dataset.autor = estado.mente;   // a resposta é do Jorge
+    bolhaAtual = bolha('assistente', '');
+    bolhaAtual.innerHTML = '<span class="digit" aria-label="escrevendo"><i></i><i></i><i></i></span>';
     textoAtual = '';
     setOcupado(true);
+    atividade('pergunta enviada');
+    atualizarFicha();
     jorgeIlha.acordar(9000);   // você chamou: ele acorda para responder
     ponte.enviar_chat(modelo, JSON.stringify(historico));
   }
 
   function enviarPelaCaixa() { const t = entrada.value.trim(); if (!t) return; entrada.value = ''; enviarChat(t); }
   $('#enviar').addEventListener('click', enviarPelaCaixa);
-  entrada.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviarPelaCaixa(); } });
+  entrada.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarPelaCaixa(); } });
   $('#parar').addEventListener('click', () => { if (ponte) ponte.cancelar_chat(); });
   $('#atualizar').addEventListener('click', () => { if (ponte) ponte.listar_modelos(); });
   $('#ouvir').addEventListener('click', () => { if (ponte) ponte.ouvir(); });
@@ -1600,8 +1780,9 @@
     }));
     escolhaBotao.textContent = sel.value ? (ehNuvem(sel.value) ? sel.value + ' (nuvem)' : sel.value) : 'Sem modelo';
     escolhaBotao.classList.toggle('nuvem', ehNuvem(sel.value));
-    escolhaBotao.disabled = !nomes.length;
-    if (!nomes.length) escolhaLista.hidden = true;
+    escolhaBotao.disabled = true;               // modelo fixo (lfm3-omni): o botão só indica, não troca
+    escolhaBotao.title = 'Modelo fixo do chat — baixe a lfm3-omni pelo botão ao lado se faltar';
+    escolhaLista.hidden = true;
   }
   escolhaBotao.addEventListener('click', e => {
     e.stopPropagation();
@@ -1622,14 +1803,18 @@
     if (!$('#escolha').contains(e.target)) { escolhaLista.hidden = true; escolhaBotao.setAttribute('aria-expanded', 'false'); }
   });
 
+  // o chat trabalha fixo na lfm3-omni (texto + voz no mesmo modelo); sem ela, oferece o download
+  const MODELO_FIXO = 'lfm3-omni';
   function aoModelos(lista) {
     modelos = Array.isArray(lista) ? lista : [];
     const sel = $('#modelo'), salvo = localStorage.getItem('pestinha.modelo');
     sel.innerHTML = '';
     modelos.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = ehNuvem(m) ? m + ' (nuvem)' : m; sel.appendChild(o); });
+    const fixo = modelos.find(m => m === MODELO_FIXO || m.startsWith(MODELO_FIXO + ':'));
     const local = modelos.find(m => !ehNuvem(m));
-    if (salvo && modelos.includes(salvo)) sel.value = salvo; else if (local) sel.value = local;
-    sel.disabled = !modelos.length;
+    if (fixo) sel.value = fixo; else if (salvo && modelos.includes(salvo)) sel.value = salvo; else if (local) sel.value = local;
+    $('#modelo-pull').hidden = !!fixo;
+    sel.disabled = true;                        // chat preso à lfm3-omni; sem ela, cai no melhor local até o pull
     $('#aviso-nuvem').hidden = !ehNuvem(sel.value);
     if (ponte && sel.value) ponte.definir_modelo(sel.value);
     renderizarEscolha();
@@ -1638,7 +1823,7 @@
   }
 
   // Voz: perguntou falando, a resposta também é falada (voz do LLM; sem ela, a do Windows)
-  let veioDeVoz = false;
+  let veioDeVoz = false, pendenteVoz = false;
   function aoModeloVoz(s) {
     const caixa = $('#voz-baixar');
     if (s === 'ausente') { caixa.hidden = false; $('#voz-baixar-bt').disabled = false; $('#voz-progresso').textContent = ''; }
@@ -1648,10 +1833,25 @@
   }
   $('#voz-baixar-bt').addEventListener('click', () => { if (ponte) ponte.baixar_modelo_voz(); });
 
+  // download do modelo fixo: o chip some quando a lfm3-omni aparece na lista
+  $('#modelo-pull-bt').addEventListener('click', () => {
+    if (!ponte) return;
+    $('#modelo-pull-bt').disabled = true;
+    $('#modelo-pull-p').textContent = '…';
+    ponte.baixar_modelo(MODELO_FIXO);
+  });
+  function aoModeloPull(d) {
+    const bt = $('#modelo-pull-bt'), p = $('#modelo-pull-p');
+    if (d.status === 'pronto') { $('#modelo-pull').hidden = true; if (ponte) ponte.listar_modelos(); return; }
+    bt.disabled = true;
+    p.textContent = d.pct != null ? d.pct + '%' : d.status;
+  }
+
   function aoToken(t) {
     vibra.pulsar(.5);
     if (!bolhaAtual) return;
-    textoAtual += t; bolhaAtual.textContent = textoAtual;
+    textoAtual += t;
+    renderMdPara(bolhaAtual, textoAtual);   // a resposta cresce já formatada
     mensagens.scrollTop = mensagens.scrollHeight;
   }
 
@@ -1665,8 +1865,11 @@
       if (!aberta || vista !== 'chat') falar('Respondi no chat, quer dar uma olhada?', 'sistema', 'calmo');
     } else if (bolhaAtual) bolhaAtual.remove();
     bolhaAtual = null;
-    veioDeVoz = false;
     setOcupado(false);
+    atualizarFicha();
+    // pergunta por voz que chegou enquanto ele respondia: envia agora que terminou
+    if (pendenteVoz) { pendenteVoz = false; enviarPelaCaixa(); }
+    else veioDeVoz = false;
   }
 
   function aoErro(texto) {
@@ -1960,10 +2163,23 @@
       ponte.token.connect(aoToken);
       ponte.chat_fim.connect(aoFim);
       ponte.erro.connect(aoErro);
-      ponte.transcrito.connect(texto => { veioDeVoz = true; entrada.value = texto; enviarPelaCaixa(); });
-      ponte.envelope.connect(s => vibra.falar(JSON.parse(s), 'modelo'));
-      ponte.voz_estado.connect(s => { $('#ouvir').textContent = s === 'ouvindo' ? 'Ouvindo… (clique p/ parar)' : s === 'transcrevendo' ? 'Entendendo…' : 'Falar'; });
+      ponte.transcrito.connect(texto => {
+        veioDeVoz = true;
+        entrada.value = texto;
+        if (respondendo) pendenteVoz = true;   // LLM ocupada: o texto fica na caixa e vai ao terminar
+        else enviarPelaCaixa();
+      });
+      ponte.envelope.connect(s => { vibra.falar(JSON.parse(s), 'modelo'); fichaFalando(); });
+      ponte.voz_estado.connect(s => {
+        const bt = $('#ouvir');
+        bt.textContent = s === 'ouvindo' ? 'Ouvindo… (clique p/ parar)' : s === 'transcrevendo' ? 'Entendendo…' : 'Falar';
+        bt.classList.toggle('ouvindo', s === 'ouvindo' || s === 'transcrevendo');
+        if (s === 'ouvindo' || s === 'transcrevendo') fichaStatus('ouvindo');
+        else fichaStatus(respondendo ? 'pensando' : 'pronto');
+        if (vista === 'chat') $('#vibra-estado').textContent = s === 'ouvindo' ? 'Ouvindo você…' : s === 'transcrevendo' ? 'Entendendo…' : 'Pronta';
+      });
       ponte.voz_modelo.connect(aoModeloVoz);
+      ponte.modelo_pull.connect(s => aoModeloPull(JSON.parse(s)));
       ponte.gesto.connect(a => mascote.aoGesto(a));
       ponte.emocao.connect(a => mascote.definirEmocao(a));   // emoção instantânea, sem o atraso do snapshot
       ponte.solo_livre.connect(v => mascote.definirFora(estado.solo && v));  // saiu/voltou na hora

@@ -156,10 +156,11 @@ class Ouvinte(QThread):
                         resultado = recorte.passo(gravador.record(numframes=BLOCO)[:, 0])
                         if resultado != "continua":
                             break
-            if self.isInterruptionRequested():
-                return
+            # Parar no meio da fala ainda transcreve o que foi capturado;
+            # parar antes de falar nada cancela em silêncio.
             if not recorte.falando:
-                self.erro.emit("Não ouvi nada. Fale perto do microfone e tente de novo.")
+                if not self.isInterruptionRequested():
+                    self.erro.emit("Não ouvi nada. Fale perto do microfone e tente de novo.")
                 return
             self.estado.emit("transcrevendo")
             texto = transcrever(recorte.fala())

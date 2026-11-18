@@ -91,7 +91,7 @@ def test_insight_do_ollama_vira_aviso_sem_usar_o_chat(tmp_path, monkeypatch):
     ponte._guardar_modelos(["minimax-m2:cloud", "qwen2.5:3b"])
     ponte.pedir_insight()
     assert pedidos == ["qwen2.5:3b"] and chat == []
-    assert avisos == [{"texto": "Ele está cheio de energia.", "tom": "insight", "origem": "ollama"}]
+    assert avisos == [{"texto": "Ele está cheio de energia.", "tom": "insight", "origem": "jorge"}]
     assert estados == ["pensando", "pronto"]
     ponte.acao("avion", True)                                    # modo avião: nada de rede
     ponte.pedir_insight()

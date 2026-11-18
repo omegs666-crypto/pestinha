@@ -54,11 +54,12 @@ DEFAULT_PERMISSIONS = {
     "segundo_celebro_pasta": "",  # pasta do vault escolhida na tela inicial (vazio = não configurado)
     "pet_mente": "jorge",      # o persona que fala pela LLM (a mente); o pet do corpo é "pet"
     "mente_llm": True,         # a mente responde no chat e comenta os insights
+    "ia_arquivos": True,       # o chat pode materializar arquivos gerados pela IA (~/Downloads/Pestinha)
     "voz": False,              # fala em voz alta o que ele sente (frases de pets/<pet>/falas/)
     "voz_modo": "sistema",     # "sistema" (voz do SO), "tts" (servidor TTS local) ou "llm" (LLM local)
     "voz_url": "",             # servidor local (TTS ou LLM, ex.: http://localhost:11434/api/generate)
     "llm_modelo": "",          # modelo da LLM local (ex.: "llama3"); vazio = o padrão do servidor
-    "ollama_chat_modelo": "",  # modelo local selecionado na aba Chat da ilha
+    "ollama_chat_modelo": "lfm3-omni",  # modelo fixo do chat (texto + voz); a ilha oferece o pull se faltar
     "ilha": False,             # ilha interativa no topo da tela (estilo Coucou): espreita e expande em pills
     "ilha_web": True,          # usa a ilha em WebEngine (ui/web); False ou sem WebEngine = ilha nativa Qt
     "ilha_solo": False,        # um persona só: ele mora na ilha; arraste para fora e ele sai, cansado ele volta

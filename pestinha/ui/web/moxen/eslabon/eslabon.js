@@ -145,7 +145,7 @@
     raiz.style.setProperty('--es-nodo-h', NODO_H + 'px');
     const anuncia = t => { el.vivo.textContent = ''; setTimeout(() => { el.vivo.textContent = t; }, 30); };
 
-    const E = { arrancando: true, seq: [], sel: null, evento: 'completo', run: null, menu: null, spawn: new Map(), errCampo: null, campoAct: null, arroba: null, foco: null };
+    const E = { arrancando: true, seq: [], soltos: [], sel: null, evento: 'completo', run: null, menu: null, spawn: new Map(), errCampo: null, campoAct: null, arroba: null, foco: null };
     let uid = 0, cons = [], lista = [];
     const porId = new Map(), dom = new Set(), conRec = new Map();
     let raf = 0, ultimo = 0;
@@ -396,6 +396,11 @@
           '<span class="es-txt"><b class="es-nom"></b><span class="es-res"></span></span>' +
           '<span class="es-est" data-e="idle" aria-hidden="true">' + IC.est + '</span>' +
           '<button class="es-x" type="button" tabindex="-1" aria-label="Remover este passo">' + IC.x + '</button>' +
+          // as portas: de onde o fio sai puxando (o «Si…» tem duas, uma por ramo)
+          '<span class="es-portas">' + (n.tipo === 'si'
+            ? '<button class="es-porta es-p-sim" type="button" tabindex="-1" data-rama="0" aria-label="Puxar fio do ramo Sim">Sim</button>' +
+              '<button class="es-porta es-p-nao" type="button" tabindex="-1" data-rama="1" aria-label="Puxar fio do ramo Não">Não</button>'
+            : '<button class="es-porta" type="button" tabindex="-1" aria-label="Puxar um fio daqui"></button>') + '</span>' +
         '</div>' +
         '<div class="es-salida">' +
           '<button class="es-chip" type="button" tabindex="-1" aria-expanded="false"><span class="es-chip-t"></span>' + IC.chev + '</button>' +
@@ -690,7 +695,7 @@
       pintaNodo(n);
       if (rehace) pintaTodos();
       pintaEstado();
-      if (op.alCambiar) op.alCambiar({ flujo: serializa() });
+      avisaCambio();
     }
 
     /* Insertar un dato (una píldora) en un campo: el token entra con un resorte y un anillo. */
@@ -766,9 +771,10 @@
       P.textContent = ''; P.dataset.arrastra = '0';
       if (!n) return;
       const T = TIPOS[n.tipo], orden = todos().indexOf(n) + 1;
+      const solto = E.soltos.includes(n);
       const cab = h('header', 'es-p-cab');
       cab.innerHTML = '<span class="es-ic es-ic-g" data-tipo="' + n.tipo + '">' + IC[T.ic] + '</span><div class="es-p-t"><p class="es-rot"></p><h2></h2></div>';
-      $('.es-rot', cab).textContent = n.tipo === 'disparador' ? 'Gatilho' : n.tipo === 'si' ? 'Condição' : 'Passo ' + (orden - 1);
+      $('.es-rot', cab).textContent = n.tipo === 'disparador' ? 'Gatilho' : solto ? 'Caixa solta' : n.tipo === 'si' ? 'Condição' : 'Passo ' + (orden - 1);
       $('h2', cab).textContent = T.nom;
       if (n.tipo !== 'disparador') {
         const b = h('button', 'es-p-borra'); b.type = 'button'; b.innerHTML = IC.basura; b.setAttribute('aria-label', 'Remover este passo'); b.title = 'Remover este passo';
@@ -786,9 +792,9 @@
       // los datos: píldoras que se arrastran a un campo
       const ds = h('section', 'es-datos');
       const usaDatos = (CAMPOS[n.tipo] || []).some(d => d.t === 'slot' || d.t === 'multi');
-      const prev = n.tipo === 'disparador' ? [n] : usaDatos ? previos(n) : [];
+      const prev = n.tipo === 'disparador' ? [n] : usaDatos && !solto ? previos(n) : [];
       ds.appendChild(h('h3', 'es-d-tit', n.tipo === 'disparador' ? 'Dados que este passo entrega' : 'Dados disponíveis'));
-      ds.appendChild(h('p', 'es-d-ayuda', n.tipo === 'disparador' ? 'Os passos abaixo poderão usá-los.' : usaDatos ? 'Arraste-os para um campo, toque neles ou digite @ dentro de um campo.' : 'Este passo não usa dados dos anteriores.'));
+      ds.appendChild(h('p', 'es-d-ayuda', n.tipo === 'disparador' ? 'Os passos abaixo poderão usá-los.' : solto ? 'Conecte a caixa ao fluxo (puxe um fio até ela ou arraste-a sobre um fio) para ver os dados.' : usaDatos ? 'Arraste-os para um campo, toque neles ou digite @ dentro de um campo.' : 'Este passo não usa dados dos anteriores.'));
       prev.forEach(p => {
         const g = h('div', 'es-grupo'), tt = h('p', 'es-g-tit');
         tt.innerHTML = '<span class="es-ic es-ic-m" data-tipo="' + p.tipo + '">' + IC[TIPOS[p.tipo].ic] + '</span><b></b><code></code>';
@@ -946,11 +952,11 @@
     function abreMenu(rec, porTeclado) {
       if (E.run) cancelaRun();
       cierraMenu(false);
-      E.menu = { rec, i: 0, items: [], desde: rec.mas, teclado: !!porTeclado };
-      rec.mas.classList.add('is-abierto'); rec.mas.setAttribute('aria-expanded', 'true');
+      E.menu = { rec, i: 0, items: [], desde: rec.mas || null, teclado: !!porTeclado };
+      if (rec.mas) { rec.mas.classList.add('is-abierto'); rec.mas.setAttribute('aria-expanded', 'true'); }
       mIn.value = ''; pintaMenu();
       menu.hidden = false;
-      const rm = rec.mas.getBoundingClientRect(), rr = raiz.getBoundingClientRect(), mw = 268, mh = menu.offsetHeight || 340;
+      const rm = rec.mas ? rec.mas.getBoundingClientRect() : rec.pt, rr = raiz.getBoundingClientRect(), mw = 268, mh = menu.offsetHeight || 340;
       const estrecho = rr.width < 640;
       let x = estrecho ? rm.left - rr.left - mw / 2 + 11 : rm.right - rr.left + 14;
       let y = estrecho ? rm.bottom - rr.top + 12 : rm.top - rr.top - 28;
@@ -963,12 +969,12 @@
     }
     function cierraMenu(devuelve) {
       const M = E.menu; if (!M) return;
-      M.rec.mas.classList.remove('is-abierto'); M.rec.mas.removeAttribute('aria-expanded');
+      if (M.rec.mas) { M.rec.mas.classList.remove('is-abierto'); M.rec.mas.removeAttribute('aria-expanded'); }
       E.menu = null;
       menu.classList.remove('es-abre'); menu.classList.add('es-cierra');
       setTimeout(() => { if (!E.menu) { menu.hidden = true; menu.classList.remove('es-cierra'); } }, quieto() ? 0 : 160);
       if (quieto()) menu.hidden = true;
-      if (devuelve && M.rec.mas.isConnected) ponFoco(M.rec.mas, true);
+      if (devuelve && M.rec.mas && M.rec.mas.isConnected) ponFoco(M.rec.mas, true);
     }
     mIn.addEventListener('input', () => { if (!E.menu) return; E.menu.i = 0; pintaMenu(); });
     mIn.addEventListener('keydown', e => {
@@ -978,24 +984,28 @@
       else if (e.key === 'Enter') { e.preventDefault(); const k = M.items[M.i]; if (k && (k !== 'si' || puedeSi(M.rec))) elige(k); }
       else if (e.key === 'Tab') { e.preventDefault(); cierraMenu(true); }
     });
-    document.addEventListener('pointerdown', e => { if (E.menu && !menu.contains(e.target) && !E.menu.rec.mas.contains(e.target)) cierraMenu(false); });
+    document.addEventListener('pointerdown', e => { if (E.menu && !menu.contains(e.target) && !(E.menu.rec.mas && E.menu.rec.mas.contains(e.target))) cierraMenu(false); });
 
     /* ── insertar y quitar pasos ──────────────────────────────────────── */
     function elige(tipo) {
       const M = E.menu, rec = M.rec, teclado = M.teclado;
       cierraMenu(false);
-      const n = inserta(tipo, rec);
+      const n = rec.solto ? criaSolto(tipo, rec.solto.x, rec.solto.y) : inserta(tipo, rec);
       if (n && teclado) ponFoco(n.nodoEl, true);
     }
-    function inserta(tipo, donde, indice) {
+    // menu aberto pelo fio/vazio: o `rec` não tem botão «+» — posiciona por `rec.pt`
+    const abreMenuFio = rec => abreMenu(rec, false);
+    function inserta(tipo, donde, indice, pronto) {
       // `donde` es el conector (lo que elige el menú) o una secuencia; con `indice` la API pública pone el paso en esa posición
+      // `pronto`: uma caixa solta que entra no fluxo (o fio a alcançou) em vez de nascer nova
       let seq, idx, rec = null;
       if (donde && donde.seq) { rec = donde; seq = donde.seq; idx = donde.idx; }
       else { seq = E.seq; idx = lim(indice == null ? seq.length : indice, 1, seq.length); rec = { seq, idx, de: seq[idx - 1], rama: null }; }
       if (tipo === 'si' && !puedeSi(rec)) return null;
       if (E.run) cancelaRun();
       el.pista.classList.add('is-fuera');
-      const n = creaNodo(tipo); n.alias = aliasUnico(tipo);
+      const n = pronto || creaNodo(tipo);
+      if (!pronto) n.alias = aliasUnico(tipo);
       if (tipo === 'si') {
         const cola = seq.splice(idx);
         cola.fin = seq.fin; seq.fin = null;
@@ -1008,11 +1018,12 @@
       selecciona(n, true);
       pintaTodos(); pintaEstado();
       anuncia('Passo adicionado: ' + TIPOS[tipo].nom + (tipo === 'si' ? '. O fluxo se divide em dois ramos, Sim e Não.' : '.'));
-      if (op.alCambiar) op.alCambiar({ flujo: serializa() });
+      avisaCambio();
       return n;
     }
     function quitaNodo(n, enfoca) {
       if (n.tipo === 'disparador') return;
+      if (E.soltos.includes(n)) { quitaSolto(n); return; }
       if (E.run) cancelaRun();
       const u = ubica(n); if (!u) return;
       const { seq, idx } = u;
@@ -1029,11 +1040,270 @@
       pintaTodos(); pintaEstado();
       if (enfoca) ponFoco(vecino.nodoEl, true);
       anuncia('Passo removido: ' + TIPOS[n.tipo].nom);
-      if (op.alCambiar) op.alCambiar({ flujo: serializa() });
+      avisaCambio();
     }
     function serializa() {
       const s = seq => seq.map(n => Object.assign({ id: n.id, tipo: n.tipo, campos: copia(n.campos) }, n.ramas ? { ramas: n.ramas.map(r => s(r.seq)) } : {}));
       return s(E.seq);
+    }
+    const serializaSoltos = () => E.soltos.map(n => ({ id: n.id, tipo: n.tipo, campos: copia(n.campos), x: Math.round(n.sx), y: Math.round(n.sy) }));
+    // toda mudança sai junta: o fluxo e as caixas soltas com suas posições
+    const avisaCambio = () => { if (op.alCambiar) op.alCambiar({ flujo: serializa(), soltos: serializaSoltos() }); };
+
+    /* ── caixas soltas: nascem livres; o fio as prende na sequência ──────
+       Não estão em E.seq nem em `lista`: têm posição própria (sx, sy = centro)
+       e não executam. Ao conectar, entram na sequência — a execução segue
+       linear, como sempre foi. */
+    function montaSolto(n) {
+      montaNodo(n);                 // o DOM é o mesmo de um passo…
+      dom.delete(n);                // …mas fora do ciclo de sincronização
+      n.el.classList.add('es-solto');
+      n.nodoEl.appendChild(h('span', 'es-solto-tag', 'solto'));
+      pintaSolto(n);
+    }
+    const pintaSolto = n => { if (n.el) n.el.style.translate = (n.sx - W / 2).toFixed(1) + 'px ' + n.sy.toFixed(1) + 'px'; };
+
+    function criaSolto(tipo, x, y) {
+      const n = creaNodo(tipo);
+      n.alias = aliasUnico(tipo);
+      n.sx = lim(x, W / 2 + 8, Math.max(W, (el.mundo.clientWidth || 1200) - 8) - W / 2);
+      n.sy = lim(y, 10, Math.max(200, (el.mundo.clientHeight || 800) - 70));
+      E.soltos.push(n);
+      montaSolto(n);
+      anuncia('Caixa solta: ' + TIPOS[tipo].nom + '. Puxe um fio até ela ou arraste-a sobre o fluxo.');
+      avisaCambio(); pintaEstado();
+      return n;
+    }
+    function quitaSolto(n) {
+      const i = E.soltos.indexOf(n); if (i < 0) return;
+      E.soltos.splice(i, 1); porId.delete(n.id);
+      if (E.sel === n) { E.sel = null; pintaPanel(false); }
+      if (n.el) { const e = n.el; n.el = null; e.classList.add('es-sale'); setTimeout(() => e.remove(), 380); }
+      anuncia('Caixa solta removida.');
+      avisaCambio(); pintaEstado();
+    }
+    // onde um fio saído de `n` (ramo `rama`, se for Si…) encaixaria um passo
+    function recApos(n, rama) {
+      if (rama != null && n.ramas) return { seq: n.ramas[rama].seq, idx: 0, de: n, rama };
+      const u = ubica(n);
+      return u ? { seq: u.seq, idx: u.idx + 1, de: n, rama: null } : { seq: E.seq, idx: E.seq.length, de: n, rama: null };
+    }
+    function conectaSolto(n, rec) {
+      const i = E.soltos.indexOf(n); if (i < 0 || !rec) return false;
+      E.soltos.splice(i, 1);
+      // a posição solta vira o ponto de partida do resorte de encaixe
+      n.fresco = false; n.x = n.sx; n.y = n.sy; n.h = NODO_H; n.vx = n.vy = n.vh = 0;
+      n.el.classList.remove('es-solto');
+      const tag = n.el.querySelector('.es-solto-tag'); if (tag) tag.remove();
+      dom.add(n);
+      if (!inserta(n.tipo, rec, null, n)) {   // só um «Si…» por fluxo: volta a ser solta
+        E.soltos.push(n); dom.delete(n);
+        n.el.classList.add('es-solto');
+        n.nodoEl.appendChild(h('span', 'es-solto-tag', 'solto'));
+        pintaSolto(n);
+        anuncia('Só uma bifurcação por fluxo — a caixa ficou solta.');
+        return false;
+      }
+      anuncia('Caixa conectada: ' + TIPOS[n.tipo].nom + '.');
+      return true;
+    }
+    function restauraSoltos() {
+      (op.soltos || []).forEach(d => {
+        if (!d || !TIPOS[d.tipo]) return;
+        const n = porId.get(d.id) || creaNodo(d.tipo, d.id);
+        n.campos = Object.assign(defaultsDe(d.tipo), copia(d.campos || {}));
+        if (!n.alias) n.alias = aliasUnico(d.tipo);
+        n.sx = lim(Number(d.x) || 80, 8, 4000); n.sy = lim(Number(d.y) || 80, 8, 4000);
+        E.soltos.push(n); montaSolto(n);
+      });
+    }
+    function limpaSoltos() {
+      E.soltos.forEach(n => { porId.delete(n.id); if (n.el) { n.el.remove(); n.el = null; } });
+      E.soltos = [];
+    }
+
+    /* ── o fio: sai da porta e vai atrás do cursor; onde soltar decide ── */
+    let fio = null;
+    function iniciaFio(porta, e) {
+      const b = porta.closest('.es-bloque'), n = b && porId.get(b.dataset.id);
+      if (!n || fio) return;
+      e.preventDefault(); e.stopPropagation();
+      const mR = el.mundo.getBoundingClientRect(), pR = porta.getBoundingClientRect();
+      const path = sv('path', 'es-fio'); el.cables.appendChild(path);
+      fio = { de: n, rama: porta.dataset.rama != null ? Number(porta.dataset.rama) : null,
+        path, id: e.pointerId, ox: pR.left + pR.width / 2 - mR.left, oy: pR.top + pR.height / 2 - mR.top,
+        x: e.clientX - mR.left, y: e.clientY - mR.top, alvo: null };
+      raiz.classList.add('is-fiando');
+      desenhaFio();
+      anuncia('Puxando um fio de «' + TIPOS[n.tipo].nom + '»' + (fio.rama != null ? ' (ramo ' + n.ramas[fio.rama].etq + ')' : '') + '. Solte sobre uma caixa solta, um passo ou o vazio.');
+    }
+    function desenhaFio() {
+      const k = Math.max(26, Math.abs(fio.y - fio.oy) * .45);
+      fio.path.setAttribute('d', 'M' + fio.ox.toFixed(1) + ' ' + fio.oy.toFixed(1) + 'C' + fio.ox.toFixed(1) + ' ' + (fio.oy + k).toFixed(1) + ' ' + fio.x.toFixed(1) + ' ' + (fio.y - k).toFixed(1) + ' ' + fio.x.toFixed(1) + ' ' + fio.y.toFixed(1));
+    }
+    function alvoFio(cx, cy) {
+      const t = document.elementFromPoint(cx, cy);
+      if (!t) return { tipo: 'vazio' };
+      const b = t.closest('.es-bloque');
+      if (b) {
+        const n = porId.get(b.dataset.id);
+        if (n && n !== fio.de) return { tipo: E.soltos.includes(n) ? 'solto' : 'nodo', n };
+      }
+      const mas = t.closest('.es-mas');
+      if (mas) { const c = cons.find(c => c.mas === mas); if (c) return { tipo: 'cabo', c }; }
+      return { tipo: 'vazio' };
+    }
+    function marcaAlvoFio(alvo) {
+      el.mundo.querySelectorAll('.es-alvo-fio').forEach(x => x.classList.remove('es-alvo-fio'));
+      if (alvo && alvo.n && alvo.n.el) alvo.n.el.classList.add('es-alvo-fio');
+      if (alvo && alvo.tipo === 'cabo') alvo.c.mas.classList.add('es-alvo-fio');
+    }
+    function fimFio(e) {
+      if (!fio || (e.pointerId != null && e.pointerId !== fio.id)) return;
+      const f = fio; fio = null;
+      raiz.classList.remove('is-fiando');
+      f.path.remove();
+      el.mundo.querySelectorAll('.es-alvo-fio').forEach(x => x.classList.remove('es-alvo-fio'));
+      if (e.type === 'pointercancel') return;
+      const alvo = f.alvo;
+      if (!alvo || alvo.tipo === 'vazio') {
+        // soltou no vazio: menu no ponto — o passo novo já nasce ligado à origem
+        const rec = recApos(f.de, f.rama);
+        rec.pt = { left: e.clientX - 11, right: e.clientX + 11, top: e.clientY - 11, bottom: e.clientY + 11 };
+        abreMenuFio(rec);
+        return;
+      }
+      if (alvo.tipo === 'solto') { conectaSolto(alvo.n, recApos(f.de, f.rama)); return; }
+      if (alvo.tipo === 'nodo') {   // fio num passo existente: escolhe o tipo e nasce ligado depois dele
+        const rec = recApos(alvo.n, null);
+        rec.pt = { left: e.clientX - 11, right: e.clientX + 11, top: e.clientY - 11, bottom: e.clientY + 11 };
+        abreMenuFio(rec);
+        return;
+      }
+      if (alvo.tipo === 'cabo') {   // fio sobre um cabo: cria o passo ali, ligado nos dois lados
+        alvo.c.pt = { left: e.clientX - 11, right: e.clientX + 11, top: e.clientY - 11, bottom: e.clientY + 11 };
+        abreMenuFio(alvo.c);
+      }
+    }
+
+    /* ── arrastar uma caixa solta: move livre; perto do fluxo, imã ────── */
+    let movS = null;
+    function alvoSolto(cx, cy) {
+      const t = document.elementFromPoint(cx, cy);
+      if (!t) return null;
+      const mas = t.closest('.es-mas');
+      if (mas) { const c = cons.find(c => c.mas === mas); return c || null; }
+      const b = t.closest('.es-bloque');
+      if (b) {
+        const n = porId.get(b.dataset.id);
+        if (n && n !== movS.n && !E.soltos.includes(n)) return recApos(n, null);
+      }
+      return null;
+    }
+    el.mundo.addEventListener('pointerdown', e => {
+      const porta = e.target.closest('.es-porta');
+      if (porta && e.button === 0) { iniciaFio(porta, e); return; }
+      const b = e.target.closest('.es-bloque');
+      if (!b || e.button > 0 || !b.classList.contains('es-solto')) return;
+      if (e.target.closest('.es-x, .es-chip')) return;
+      const n = porId.get(b.dataset.id);
+      if (!n) return;
+      movS = { n, id: e.pointerId, x0: e.clientX, y0: e.clientY, moveu: false, alvo: null };
+    });
+    document.addEventListener('pointermove', e => {
+      if (fio && e.pointerId === fio.id) {
+        const mR = el.mundo.getBoundingClientRect();
+        fio.x = e.clientX - mR.left; fio.y = e.clientY - mR.top;
+        desenhaFio();
+        const alvo = alvoFio(e.clientX, e.clientY);
+        if (alvo.tipo !== (fio.alvo && fio.alvo.tipo) || alvo.n !== (fio.alvo && fio.alvo.n)) { marcaAlvoFio(alvo); fio.alvo = alvo; }
+        return;
+      }
+      if (!movS || e.pointerId !== movS.id) return;
+      if (!movS.moveu && Math.hypot(e.clientX - movS.x0, e.clientY - movS.y0) < 6) return;
+      if (!movS.moveu) movS.n.el.classList.add('es-mov');   // some do hit-test: o alvo embaixo recebe o brilho
+      movS.moveu = true;
+      const mR = el.mundo.getBoundingClientRect();
+      movS.n.sx = lim(e.clientX - mR.left, W / 2 + 8, Math.max(W, el.mundo.clientWidth - 8) - W / 2);
+      movS.n.sy = lim(e.clientY - mR.top, 10, Math.max(200, el.mundo.clientHeight - 70));
+      pintaSolto(movS.n);
+      el.mundo.classList.add('is-movendo');
+      const alvo = alvoSolto(e.clientX, e.clientY);
+      el.mundo.querySelectorAll('.es-alvo-fio').forEach(x => x.classList.remove('es-alvo-fio'));
+      movS.alvo = alvo;
+      if (alvo && alvo.mas) alvo.mas.classList.add('es-alvo-fio');
+      if (alvo && alvo.de && alvo.de.el) alvo.de.el.classList.add('es-alvo-fio');
+    });
+    const fimMove = e => {
+      if (movS && e.pointerId === movS.id) {
+        const m = movS; movS = null;
+        el.mundo.classList.remove('is-movendo');
+        if (m.n.el) m.n.el.classList.remove('es-mov');
+        el.mundo.querySelectorAll('.es-alvo-fio').forEach(x => x.classList.remove('es-alvo-fio'));
+        if (!m.moveu) return;                       // foi um clique: a seleção cuida
+        if (m.alvo && !conectaSolto(m.n, m.alvo)) { /* si proibido: fica solta */ }
+        avisaCambio();
+        return;
+      }
+      if (fio && e.pointerId === fio.id) fimFio(e);
+    };
+    document.addEventListener('pointerup', fimMove);
+    document.addEventListener('pointercancel', fimMove);
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (fio) { fio.path.remove(); fio = null; raiz.classList.remove('is-fiando'); }
+    });
+
+    /* ── a paleta: arrasta um tipo e a caixa nasce onde você soltar ───── */
+    const paleta = $('[data-paleta]');
+    if (paleta) {
+      paleta.appendChild(h('span', 'es-pal-tit', 'Passos'));
+      EN_MENU.forEach(tipo => {
+        const T = TIPOS[tipo];
+        const c = h('button', 'es-pal'); c.type = 'button'; c.dataset.tipo = tipo;
+        c.innerHTML = '<span class="es-ic" data-tipo="' + tipo + '">' + IC[T.ic] + '</span><span class="es-pal-t"></span>';
+        c.lastChild.textContent = T.nom;
+        c.setAttribute('aria-label', 'Arrastar «' + T.nom + '» para criar uma caixa solta');
+        paleta.appendChild(c);
+      });
+      let pal = null;
+      paleta.addEventListener('pointerdown', e => {
+        const c = e.target.closest('.es-pal');
+        if (!c || e.button > 0) return;
+        e.preventDefault();
+        pal = { tipo: c.dataset.tipo, id: e.pointerId, x0: e.clientX, y0: e.clientY, ativo: false };
+      });
+      document.addEventListener('pointermove', e => {
+        if (!pal || e.pointerId !== pal.id) return;
+        if (!pal.ativo && Math.hypot(e.clientX - pal.x0, e.clientY - pal.y0) > 6) {
+          pal.ativo = true;
+          const f = h('div', 'es-pal-fant');
+          f.innerHTML = '<span class="es-ic" data-tipo="' + pal.tipo + '">' + IC[TIPOS[pal.tipo].ic] + '</span><span>' + TIPOS[pal.tipo].nom + '</span>';
+          raiz.appendChild(f); pal.fant = f;
+          raiz.classList.add('is-arrastrando');
+        }
+        if (pal.ativo) pal.fant.style.transform = 'translate3d(' + (e.clientX - 66) + 'px,' + (e.clientY - 20) + 'px,0)';
+      });
+      const fimPal = e => {
+        if (!pal || e.pointerId !== pal.id) return;
+        const p = pal; pal = null;
+        if (!p.ativo) return;
+        p.fant.remove(); raiz.classList.remove('is-arrastrando');
+        if (e.type === 'pointercancel') return;
+        const mR = el.mundo.getBoundingClientRect();
+        if (e.clientX < mR.left || e.clientX > mR.right || e.clientY < mR.top || e.clientY > mR.bottom) return;
+        criaSolto(p.tipo, e.clientX - mR.left, e.clientY - mR.top);
+      };
+      document.addEventListener('pointerup', fimPal);
+      document.addEventListener('pointercancel', fimPal);
+      // duplo clique no vazio: menu rápido cria a caixa solta ali mesmo
+      el.mundo.addEventListener('dblclick', e => {
+        if (e.target.closest('.es-bloque, .es-mas, .es-menu, .es-paleta, .es-porta')) return;
+        const mR = el.mundo.getBoundingClientRect();
+        const rec = { seq: E.seq, idx: E.seq.length, rama: null, solto: { x: e.clientX - mR.left, y: e.clientY - mR.top },
+          pt: { left: e.clientX - 11, right: e.clientX + 11, top: e.clientY - 11, bottom: e.clientY + 11 } };
+        abreMenuFio(rec);
+      });
     }
 
     /* ── probar: un pulso baja por el cable ───────────────────────────── */
@@ -1189,7 +1459,7 @@
       if (E.run) return;
       const n = todos().length, falta = todos().filter(incompleto).length;
       el.estado.dataset.e = falta ? 'falta' : 'borrador';
-      el.estadoTxt.textContent = falta ? 'Rascunho · falta ' + plural(falta, 'dado', 'dados') : 'Rascunho · ' + plural(n, 'passo', 'passos');
+      el.estadoTxt.textContent = (falta ? 'Rascunho · falta ' + plural(falta, 'dado', 'dados') : 'Rascunho · ' + plural(n, 'passo', 'passos')) + (E.soltos.length ? ' · ' + plural(E.soltos.length, 'caixa solta', 'caixas soltas') : '');
       el.probar.dataset.e = el.probar.dataset.e === 'corre' ? 'corre' : 'reposo';
       if (el.probar.dataset.e === 'reposo') el.probarTxt.textContent = 'Testar';
     }
@@ -1201,6 +1471,7 @@
       pintaSegEvento();
       el.pista.classList.remove('is-fuera');
       E.seq = flujoInicial();
+      limpaSoltos(); restauraSoltos();
       limpiaRunSolo();
       layout();
       selecciona(porId.get('aviso') || E.seq[E.seq.length - 1], true);
@@ -1236,6 +1507,7 @@
     el.mundo.addEventListener('click', e => {
       const mas = e.target.closest('.es-mas');
       if (mas) { const rec = cons.find(c => c.mas === mas); if (rec) { if (E.menu && E.menu.rec === rec) cierraMenu(true); else abreMenu(rec, false); } return; }
+      if (e.target.closest('.es-porta')) return;          // a porta é do fio, não da seleção
       const x = e.target.closest('.es-x');
       const b = e.target.closest('.es-bloque');
       if (x && b) { quitaNodo(porId.get(b.dataset.id), false); return; }
@@ -1280,6 +1552,7 @@
     // arranque
     E.seq = flujoInicial();
     layout();
+    restauraSoltos();
     E.arrancando = false;
     selecciona(porId.get('aviso') || E.seq[E.seq.length - 1], false);
     pintaPanel(false);

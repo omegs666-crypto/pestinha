@@ -63,6 +63,12 @@ que precisa já existir. Riscar/mover para "Feito" conforme for saindo.
 | E4 | **Limpeza de `.corrompido`**: rotina que arquiva/apaga os backups de JSON corrompido antigos | Baixo | Baixo | Vários arquivos `.corrompido` acumulados |
 | E5 | **Fix `AttributeError 'bool' object has no attribute 'strip'`**: erro recorrente nos logs, origem não localizada | Médio | Baixo | Investigar próximo debug de log |
 
+## F. Diagrama livre (eslabon) — adiado, o usuário ainda vai pensar
+
+| # | Ideia | Impacto | Esforço | Notas |
+|---|-------|---------|---------|-------|
+| F1 | **Diagrama como grafo livre** (estilo n8n completo): múltiplas entradas por nó, loops, ordem pelos fios e não pela sequência | Alto | Alto | Versão linear (caixa solta + puxar fio, nó entra na sequência ao conectar) implementada em 2026-11-17. Esta seria o próximo degrau: modelo `arestas` explícitas + regras de fan-in. Plano: `docs/PLANO_CHAT_DIAGRAMA.md` Frente B |
+
 ---
 
 ## Feito

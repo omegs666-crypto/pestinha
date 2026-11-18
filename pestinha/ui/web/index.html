@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pestinha · Núcleo</title>
-<link rel="stylesheet" href="ilha.css?v=2026-11-17a">
+<link rel="stylesheet" href="ilha.css?v=2026-11-17b">
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body>
@@ -128,6 +128,7 @@
             <button type="button" class="chave" data-acao="avion" aria-pressed="false"><span>Modo avião (sem Ollama)</span><i></i></button>
             <button type="button" class="chave" data-acao="solo" aria-pressed="false"><span>Um persona só (mora na ilha)</span><i></i></button>
             <button type="button" class="chave" data-acao="mente" aria-pressed="true"><span>Jorge responde pela IA</span><i></i></button>
+            <button type="button" class="chave" data-acao="arquivos" aria-pressed="true"><span>IA pode criar arquivos</span><i></i></button>
             <button type="button" class="chave" data-acao="narrador" aria-pressed="true"><span>Narrador comenta</span><i></i></button>
           </article>
           <article class="ctl ctl-janela">
@@ -192,38 +193,70 @@
 
       <section class="vista" data-vista="chat">
         <div class="chat">
-          <div class="topo">
-            <select id="modelo" aria-label="Modelo local" hidden></select>
-            <div class="escolha" id="escolha">
-              <button type="button" class="pilula escolha-botao" id="modelo-atual" aria-haspopup="listbox" aria-expanded="false">Escolher modelo</button>
-              <ul class="escolha-lista" id="modelo-lista" role="listbox" hidden></ul>
+          <!-- coluna principal: a conversa -->
+          <div class="chat-conversa">
+            <div class="topo">
+              <select id="modelo" aria-label="Modelo local" hidden></select>
+              <div class="escolha" id="escolha">
+                <button type="button" class="pilula escolha-botao" id="modelo-atual" aria-haspopup="listbox" aria-expanded="false">Escolher modelo</button>
+                <ul class="escolha-lista" id="modelo-lista" role="listbox" hidden></ul>
+              </div>
+              <button type="button" class="pilula" id="atualizar">Atualizar</button>
+              <label class="marca"><input type="checkbox" id="ler"> Ler respostas</label>
+              <button type="button" class="pilula" id="analisar">Analisar resultados</button>
+              <span class="modelo-pull" id="modelo-pull" hidden>
+                <button type="button" class="pilula" id="modelo-pull-bt">Baixar lfm3-omni</button><span id="modelo-pull-p"></span>
+              </span>
+              <span class="jorgito-wrap" id="jorgito-wrap" title="A mente do Pestinha" hidden>
+                <canvas id="jorgito" width="34" height="34"></canvas><b id="jorgito-nome">Jorge</b>
+              </span>
             </div>
-            <button type="button" class="pilula" id="atualizar">Atualizar</button>
-            <label class="marca"><input type="checkbox" id="ler"> Ler respostas</label>
-            <button type="button" class="pilula" id="analisar">Analisar resultados</button>
-            <span class="jorgito-wrap" id="jorgito-wrap" title="A mente do Pestinha" hidden>
-              <canvas id="jorgito" width="34" height="34"></canvas><b id="jorgito-nome">Jorge</b>
-            </span>
-          </div>
-          <div class="aviso-chat" id="aviso-nuvem" hidden>Este modelo roda na nuvem do Ollama: suas mensagens saem do PC.</div>
-          <div class="erro" id="erro" role="alert" hidden></div>
-          <div class="aviso-chat" id="voz-baixar" hidden>Para eu ouvir sua voz, baixe o modelo local de reconhecimento (Parakeet, ~<span id="voz-mb">670</span> MB, uma vez só, roda offline).
-            <button type="button" class="pilula" id="voz-baixar-bt">Baixar</button> <span id="voz-progresso"></span></div>
-          <div class="vibra" id="vibra" aria-label="Vibração do áudio da resposta">
-            <canvas id="vibra-cv"></canvas>
-            <div class="vibra-barra">
-              <span class="vibra-estado" id="vibra-estado">Pronta</span>
-              <span class="vibra-leds" id="vibra-leds" aria-hidden="true"></span>
-              <span class="vibra-tempo" id="vibra-tempo">00:00.0</span>
+            <div class="aviso-chat" id="aviso-nuvem" hidden>Este modelo roda na nuvem do Ollama: suas mensagens saem do PC.</div>
+            <div class="erro" id="erro" role="alert" hidden></div>
+            <div class="aviso-chat" id="voz-baixar" hidden>Para eu ouvir sua voz, baixe o modelo local de reconhecimento (Parakeet, ~<span id="voz-mb">670</span> MB, uma vez só, roda offline).
+              <button type="button" class="pilula" id="voz-baixar-bt">Baixar</button> <span id="voz-progresso"></span></div>
+            <div class="vibra" id="vibra" aria-label="Vibração do áudio da resposta">
+              <canvas id="vibra-cv"></canvas>
+              <div class="vibra-barra">
+                <span class="vibra-estado" id="vibra-estado">Pronta</span>
+                <span class="vibra-leds" id="vibra-leds" aria-hidden="true"></span>
+                <span class="vibra-tempo" id="vibra-tempo">00:00.0</span>
+              </div>
+            </div>
+            <div class="mensagens" id="mensagens"></div>
+            <div class="composer">
+              <textarea id="entrada" rows="1" placeholder="Fale com o Jorge… (Enter envia · Shift+Enter quebra linha)"></textarea>
+              <button type="button" class="pilula" id="ouvir">Falar</button>
+              <button type="button" class="pilula ligada" id="enviar">Enviar</button>
+              <button type="button" class="pilula" id="parar" hidden>Parar</button>
             </div>
           </div>
-          <div class="mensagens" id="mensagens"></div>
-          <div class="composer">
-            <textarea id="entrada" placeholder="Pergunte ao modelo local… (Ctrl+Enter envia)"></textarea>
-            <button type="button" class="pilula" id="ouvir">Falar</button>
-            <button type="button" class="pilula ligada" id="enviar">Enviar</button>
-            <button type="button" class="pilula" id="parar" hidden>Parar</button>
-          </div>
+          <!-- ficha da sessão: o cartão lateral, estilo a referência -->
+          <aside class="chat-ficha" id="chat-ficha" aria-label="Ficha da sessão">
+            <div class="ficha-cab">
+              <canvas id="ficha-avatar" width="46" height="46"></canvas>
+              <div class="ficha-quem">
+                <b id="ficha-nome">Jorge</b>
+                <span class="ficha-status" id="ficha-status"><i></i>pronto</span>
+              </div>
+              <button type="button" class="ficha-tag" id="ficha-tag">Ficha completa</button>
+            </div>
+            <div class="ficha-ctx">
+              <div class="ficha-ctx-t"><span>Contexto da sessão</span><b id="ficha-ctx-v">0%</b></div>
+              <div class="ficha-barra"><i id="ficha-ctx-i"></i></div>
+            </div>
+            <dl class="ficha-campos">
+              <div><dt>Modelo</dt><dd id="ficha-modelo">lfm3-omni</dd></div>
+              <div><dt>Voz</dt><dd id="ficha-voz">—</dd></div>
+              <div><dt>Mensagens</dt><dd id="ficha-msgs">0</dd></div>
+            </dl>
+            <div class="ficha-sec">Atividade da sessão</div>
+            <ul class="ficha-atividade" id="ficha-atividade" data-vazia="Nada ainda — manda a primeira pergunta."></ul>
+            <div class="ficha-acoes">
+              <button type="button" class="pilula" id="ficha-exportar">Exportar conversa</button>
+              <button type="button" class="pilula" id="ficha-limpar">Limpar</button>
+            </div>
+          </aside>
         </div>
       </section>
     </div>
@@ -247,6 +280,6 @@
     <i class="contagem" id="contagem" aria-hidden="true"></i>
   </div>
 </div>
-<script src="ilha.js?v=2026-11-17a"></script>
+<script src="ilha.js?v=2026-11-17b"></script>
 </body>
 </html>

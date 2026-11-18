@@ -62,6 +62,7 @@ class Ponte(QObject):
     voz_estado = Signal(str)
     voz_modelo = Signal(str)        # "pronto", "ausente", "baixando", erro
     voz_download = Signal(int)
+    modelo_pull = Signal(str)         # progresso do ollama pull do modelo fixo (JSON)
     envelope = Signal(str)          # volume da fala do LLM ao longo do tempo (para a vibração do chat)
     desgrudou = Signal()            # a pílula saiu do topo (o usuário a puxou para baixo)
     modo_mudou = Signal(str)        # "topo" (encostada) ou "livre"
@@ -89,6 +90,9 @@ class Ponte(QObject):
         self._ollama.speech_ready.connect(self._envelope_fala)      # antes de tocar: a vibração começa junto com o som
         self._ollama.speech_ready.connect(self._voz.play_wav)
         self._ollama.speech_failed.connect(self._voz_do_sistema)
+        self._ollama.pull_progress.connect(
+            lambda d: self.modelo_pull.emit(json.dumps(d)))
+        self._ollama.pull_finished.connect(self._modelo_baixado)
         self._voz.transcribed.connect(self.transcrito)
         self._voz.error.connect(self.erro)
         self._voz.activity_changed.connect(self.voz_estado)
@@ -426,6 +430,18 @@ class Ponte(QObject):
         """Modelo escolhido no chat; o narrador o usa se ele for local."""
         self._modelo_preferido = str(nome)[:200]
 
+    @Slot(str)
+    def baixar_modelo(self, nome):
+        """Baixa o modelo fixo do chat pelo /api/pull (a ilha mostra o progresso)."""
+        nome = "".join(c for c in str(nome) if c.isalnum() or c in ":.-_/")[:200]
+        if not nome:
+            return
+        self._ollama.pull_async(nome)
+
+    def _modelo_baixado(self):
+        self.modelo_pull.emit(json.dumps({"status": "pronto", "pct": 100}))
+        self._ollama.list_models_async()   # a lista se refresca e o chat pega o modelo novo
+
     @Slot(bool)
     def ligar_narrador(self, ligado):
         self.narrador_ligado = bool(ligado)
@@ -495,6 +511,7 @@ class Ponte(QObject):
             "pausado": bool(getattr(self.app, "paused", False)),
             "voz": bool(self.app.perms.get("voz")),
             "travessuras": bool(self.app.perms.get("travessuras")),
+            "ia_arquivos": bool(self.app.perms.get("ia_arquivos", True)),
             "offline": self.offline,
             "processando": atividade >= 60 or self._treinando(),
             "logs": [str(linha)[:300] for linha in log_module.recent(40)] if logs else None,
@@ -545,6 +562,8 @@ class Ponte(QObject):
             self.app.apply_perms({"ilha_solo": not self.app.perms.get("ilha_solo")})
         elif nome == "mente":
             self.app.apply_perms({"mente_llm": not self.app.perms.get("mente_llm", True)})
+        elif nome == "arquivos":
+            self.app.apply_perms({"ia_arquivos": not self.app.perms.get("ia_arquivos", True)})
         elif nome == "avion":
             self.offline = bool(valor)
             if self.offline:
@@ -616,7 +635,11 @@ class Ponte(QObject):
             persona = str(mente.get("persona") or "")[:800]
             sistema = {"role": "system", "content":
                        f"Você é {nome}, a mente do Pestinha — o lado que pensa e explica. "
-                       f"{persona} Responda em português do Brasil."}
+                       f"{persona} Responda em português do Brasil."
+                       + (" Quando precisar entregar um arquivo, responda com um bloco "
+                          "```arquivo:nome.ext``` contendo o conteúdo completo — o chat o "
+                          "oferece para download."
+                          if self.app.perms.get("ia_arquivos", True) else "")}
             lista = [sistema] + [m for m in lista
                                  if not (isinstance(m, dict) and m.get("role") == "system")]
         self._ollama.chat_stream_async(modelo, lista)
@@ -645,6 +668,47 @@ class Ponte(QObject):
         self.erro.emit("Voz do modelo indisponível; usando a voz do sistema.")
         if self._ultimo_texto:
             self._voz.speak(self._ultimo_texto)
+
+    # ----- arquivos gerados pela IA -----
+    _MAX_ARQUIVO = 2_000_000
+
+    def _aviso_sistema(self, texto):
+        self.aviso.emit(json.dumps({"texto": texto, "origem": "sistema", "tom": "calmo"}))
+
+    def _gravar_arquivo(self, alvo, conteudo):
+        try:
+            alvo.parent.mkdir(parents=True, exist_ok=True)
+            alvo.write_text(str(conteudo)[: self._MAX_ARQUIVO], encoding="utf-8")
+        except OSError as error:
+            self._aviso_sistema(f"Não consegui salvar o arquivo: {error}")
+            return
+        self._aviso_sistema(f"Arquivo salvo em {alvo}")
+
+    @Slot(str, str)
+    def salvar_arquivo(self, nome, conteudo):
+        """Baixa direto em ~/Downloads/Pestinha/ (sem diálogo), nome desduplicado."""
+        if not self.app.perms.get("ia_arquivos", True):
+            return
+        nome = Path(str(nome)).name or "arquivo.txt"
+        pasta = Path.home() / "Downloads" / "Pestinha"
+        alvo = pasta / nome
+        for i in range(1, 100):
+            if not alvo.exists():
+                break
+            alvo = pasta / f"{alvo.stem}-{i}{alvo.suffix}"
+        self._gravar_arquivo(alvo, conteudo)
+
+    @Slot(str, str)
+    def salvar_arquivo_como(self, nome, conteudo):
+        """'Salvar como…': diálogo nativo para escolher onde o arquivo vai parar."""
+        if not self.app.perms.get("ia_arquivos", True):
+            return
+        from PySide6.QtWidgets import QFileDialog
+        nome = Path(str(nome)).name or "arquivo.txt"
+        inicial = str(Path.home() / "Downloads" / "Pestinha" / nome)
+        destino, _ = QFileDialog.getSaveFileName(None, "Salvar arquivo criado pela IA", inicial)
+        if destino:
+            self._gravar_arquivo(Path(destino), conteudo)
 
     # ----- voz de entrada -----
     @Slot()
